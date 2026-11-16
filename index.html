@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#edf0eb">
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem('fishdesk_theme') || 'system';
+        var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (error) {}
+    })();
+  </script>
+  <meta name="description" content="FishDesk 嵌入式研发工作台，记录项目进展、问题风险与真实工作日报。">
+  <title>FishDesk — 嵌入式研发工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23171a17'/%3E%3Ccircle cx='11' cy='11' r='3.4' fill='%23fff'/%3E%3Ccircle cx='21' cy='11' r='3.4' fill='%23fff'/%3E%3Ccircle cx='11' cy='21' r='3.4' fill='%23fff'/%3E%3Ccircle cx='21' cy='21' r='3.4' fill='%23dfff4f'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到项目看板</a>
+  <div class="ambient" aria-hidden="true"><span class="ambient__mint"></span><span class="ambient__grey"></span></div>
+
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="FishDesk 嵌入式研发工作台">
+        <span class="brand__mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+        <span class="brand__name">FishDesk<span>.</span></span>
+        <span class="brand__descriptor">嵌入式研发工作台</span>
+      </a>
+      <div class="topbar__actions">
+        <div class="date-block" aria-label="今天日期"><strong id="current-date"></strong><span id="current-weekday"></span></div>
+        <button class="button button--report" id="records-button" type="button" aria-label="归档与记录">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3H4zM5 10v10h14V10M10 14h4"/></svg>
+          <span>归档与记录</span>
+        </button>
+        <button class="button button--report" id="settings-button" type="button" aria-label="打开设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
+          <span>设置</span>
+        </button>
+        <button class="button button--report" id="report-button" type="button" aria-label="生成工作报告">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg>
+          <span>工作报告</span>
+        </button>
+        <button class="button button--primary" id="new-task-button" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          新建工作项
+        </button>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="overview reveal" aria-labelledby="greeting">
+        <div class="overview__copy">
+          <p class="eyebrow"><span class="status-dot"></span> ENGINEERING LOG</p>
+          <h1 id="greeting">早上好，<br><span>把问题逐项闭环。</span></h1>
+          <p class="overview__caption">记录真实进展、验证结果和需要继续跟进的问题。</p>
+          <div class="mini-metrics" aria-label="工作项概览">
+            <div><strong id="total-count">0</strong><span>工作项</span></div>
+            <span class="mini-metrics__divider" aria-hidden="true"></span>
+            <div><strong id="remaining-count">0</strong><span>待闭环</span></div>
+          </div>
+        </div>
+        <div class="progress-summary">
+          <div class="progress-summary__number engineering-number" aria-hidden="true">
+            <span id="today-log-count">0</span><span class="engineering-unit">项</span>
+          </div>
+          <p><strong id="today-project-count">0</strong> 个项目有今日进展</p>
+        </div>
+        <div class="engineering-strip">
+          <div><span>本周工作记录</span><strong id="week-log-count">0</strong></div>
+          <div><span>正在进行</span><strong id="doing-count">0</strong></div>
+          <div><span>风险待闭环</span><strong id="issue-count">0</strong></div>
+          <p>报告只整理已录入的工作记录，不自动补写成果。</p>
+        </div>
+      </section>
+
+      <section class="workspace reveal reveal--delayed" aria-labelledby="workspace-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">PROJECT EXECUTION</p><h2 id="workspace-title">项目执行看板</h2></div>
+          <div class="board-tools">
+            <label class="project-filter-label" for="project-filter">项目</label>
+            <select id="project-filter" class="project-filter" aria-label="按项目筛选工作项"><option value="all">全部项目</option></select>
+            <p class="drag-hint">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h.01M8 12h.01M8 18h.01M16 6h.01M16 12h.01M16 18h.01"/></svg>
+              拖动更新状态
+            </p>
+          </div>
+        </div>
+
+        <div class="board" id="board">
+          <section class="task-column" data-status="todo" aria-labelledby="todo-title">
+            <header class="column-header"><div class="column-header__title"><span class="column-index">01</span><h3 id="todo-title">待办</h3><span class="task-count" data-count="todo">0</span></div><button class="icon-button add-to-column" type="button" data-status="todo" aria-label="添加待办工作项"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
+            <div class="task-list" id="todo-list" data-status="todo" aria-label="待办工作项列表"></div>
+          </section>
+          <section class="task-column" data-status="doing" aria-labelledby="doing-title">
+            <header class="column-header"><div class="column-header__title"><span class="column-index">02</span><h3 id="doing-title">进行中</h3><span class="task-count" data-count="doing">0</span></div><button class="icon-button add-to-column" type="button" data-status="doing" aria-label="添加进行中工作项"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
+            <div class="task-list" id="doing-list" data-status="doing" aria-label="进行中工作项列表"></div>
+          </section>
+          <section class="task-column" data-status="done" aria-labelledby="done-title">
+            <header class="column-header"><div class="column-header__title"><span class="column-index">03</span><h3 id="done-title">已完成</h3><span class="task-count" data-count="done">0</span></div><button class="icon-button add-to-column" type="button" data-status="done" aria-label="添加已完成工作项"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
+            <div class="task-list" id="done-list" data-status="done" aria-label="已完成工作项列表"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer"><span>FACTS, NOT FILLER.</span><span class="footer__status"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="footer__sync" id="sync-status" role="status" aria-live="polite">正在连接服务器…</span><button class="footer__logout" id="logout-button" type="button">退出登录</button></span></footer>
+  </div>
+
+  <dialog class="task-dialog" id="task-dialog" aria-labelledby="dialog-title">
+    <form id="task-form" novalidate>
+      <div class="dialog-header">
+        <div><p class="eyebrow" id="dialog-eyebrow">ENGINEERING WORK ITEM</p><h2 id="dialog-title">新建工作项</h2></div>
+        <button class="icon-button dialog-close" type="button" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <input type="hidden" id="task-id"><input type="hidden" id="task-original-log-date">
+      <div class="form-body">
+      <div class="form-row">
+        <div class="form-field"><label for="task-project">项目</label><input id="task-project" type="text" maxlength="40" placeholder="例如：机器鸭" required autocomplete="off" list="project-suggestions"><datalist id="project-suggestions"></datalist></div>
+        <div class="form-field"><label for="task-module">模块 / 对象</label><input id="task-module" type="text" maxlength="40" placeholder="例如：扩展板 V3" autocomplete="off"></div>
+      </div>
+      <div class="form-field"><label for="task-title">工作项</label><input id="task-title" type="text" maxlength="100" placeholder="具体要解决或交付什么？" required autocomplete="off"><p class="field-error" id="title-error">请填写具体工作项。</p></div>
+      <div class="form-field"><label for="task-note">实际进展 / 结果 <span>有内容才写入报告</span></label><textarea id="task-note" rows="4" maxlength="600" placeholder="写清改动对象、实际结果、验证情况；仍在推进的事项注明当前状态。"></textarea><p class="field-error" id="note-error">已完成的工作项需要填写实际结果。</p>
+        <div class="log-edit-hint" id="log-edit-hint" hidden><span id="log-edit-hint-text"></span><button type="button" id="log-edit-reset">改为新增记录</button></div>
+        <div class="log-polish" id="log-polish-row" hidden>
+          <button class="button button--secondary log-polish__button" id="log-polish-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9.4l-4.2 1.8L12 16l-1.8-4.8L6 9.4l4.2-1.8L12 3Z"/><path d="M18 15l.9 2.1 2.1.9-2.1.9L18 21l-.9-2.1-2.1-.9 2.1-.9L18 15Z"/></svg>AI 润色这条记录</button>
+          <span class="log-polish__note">内容会发送到外部 AI 服务，只改措辞</span>
+        </div>
+      </div>
+      <section class="polish-panel polish-panel--inline" id="log-polish-panel" hidden aria-label="记录润色稿">
+        <div class="polish-panel__head">
+          <span class="polish-panel__title">AI 润色稿</span>
+          <span class="polish-panel__status" id="log-polish-status" role="status" aria-live="polite"></span>
+          <button class="icon-button log-polish-close" id="log-polish-close" type="button" aria-label="关闭润色稿"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+        </div>
+        <pre class="polish-result" id="log-polish-result" tabindex="0"></pre>
+        <div class="polish-actions" id="log-polish-actions" hidden>
+          <button class="button button--secondary" id="log-polish-cancel" type="button">取消</button>
+          <button class="button button--primary" id="log-polish-apply" type="button">用润色稿替换</button>
+        </div>
+      </section>
+      <div class="form-row">
+        <div class="form-field"><label for="task-work-date">工作日期</label><input id="task-work-date" type="date" required></div>
+        <div class="form-field"><label for="task-next">后续跟进 <span>可选</span></label><input id="task-next" type="text" maxlength="240" placeholder="下一步做什么？" autocomplete="off"></div>
+      </div>
+      <div class="form-field"><label for="task-issue">问题 / 风险 <span>可选</span></label><textarea id="task-issue" rows="2" maxlength="360" placeholder="当前阻塞、影响和需要的支持。"></textarea></div>
+      <div class="log-history" id="log-history" hidden>
+        <div class="log-history__head"><span>历史工作记录</span><span id="log-history-count"></span></div>
+        <ul class="log-history__list" id="log-history-list"></ul>
+        <p class="log-history__hint">点选任意一条可载入上方输入框修改，或直接删除。</p>
+      </div>
+      <div class="log-undo" id="log-undo" hidden><span id="log-undo-text"></span><button type="button" id="log-undo-button">撤销删除</button></div>
+      <div class="log-undo" id="log-polish-undo" hidden><span>已替换为 AI 润色稿，保存工作项后生效</span><button type="button" id="log-polish-undo-button">恢复原措辞</button></div>
+      <fieldset class="status-field"><legend>当前状态</legend><div class="status-options"><label><input type="radio" name="status" value="todo" checked><span>待办</span></label><label><input type="radio" name="status" value="doing"><span>进行中</span></label><label><input type="radio" name="status" value="done"><span>已完成</span></label></div></fieldset>
+      </div>
+      <div class="dialog-actions"><button class="button button--secondary dialog-cancel" type="button">取消</button><button class="button button--primary" type="submit" id="save-task-button">保存工作项</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="task-dialog report-dialog" id="report-dialog" aria-labelledby="report-dialog-title">
+    <div class="report-shell">
+      <div class="dialog-header">
+        <div><p class="eyebrow">ENGINEERING REPORT</p><h2 id="report-dialog-title">工作报告</h2></div>
+        <button class="icon-button report-close" type="button" aria-label="关闭报告"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="report-toolbar">
+        <div class="report-tabs" role="tablist" aria-label="报告周期"><button id="report-tab-day" type="button" role="tab" data-report-type="day" aria-selected="true" aria-controls="report-preview" tabindex="0">日报</button><button id="report-tab-week" type="button" role="tab" data-report-type="week" aria-selected="false" aria-controls="report-preview" tabindex="-1">周报</button><button id="report-tab-month" type="button" role="tab" data-report-type="month" aria-selected="false" aria-controls="report-preview" tabindex="-1">月报</button></div>
+        <div class="report-date-control">
+          <button class="icon-button report-step" id="report-prev" type="button" aria-label="上一个周期"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
+          <label class="report-date-label" for="report-date"><span>报告日期</span><input id="report-date" type="date"></label>
+          <button class="icon-button report-step" id="report-next" type="button" aria-label="下一个周期"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button>
+        </div>
+      </div>
+      <div class="report-preview" id="report-preview" role="tabpanel" aria-labelledby="report-tab-day" tabindex="0">
+        <article class="report-document">
+          <div class="report-polish-banner" id="report-polish-banner" hidden>
+            <span>当前显示的是 AI 润色稿：只调整了措辞，事实、数字和日期未改动。</span>
+            <button class="button button--secondary" id="restore-report-button" type="button">恢复原文</button>
+          </div>
+          <header class="report-document__header"><p id="report-kind">研发工作日报</p><h3 id="report-document-title"></h3><span id="report-summary"></span></header>
+          <div id="report-content"></div>
+        </article>
+        <p class="report-footnote">内容仅来自已保存的工作记录 · 选择日期可回看历史报告</p>
+      </div>
+      <p class="report-ai-setup" id="report-ai-setup" hidden>AI 润色还没有启用。<button type="button" id="report-ai-setup-button">去设置里填写 API Key</button></p>
+      <p class="report-ai-note" id="report-ai-note" hidden>润色会把当前报告文字发送到外部 AI 服务处理，不会发送密码或工作项以外的内容。</p>
+      <section class="polish-panel" id="polish-panel" hidden aria-label="AI 润色稿">
+        <div class="polish-panel__head">
+          <span class="polish-panel__title">AI 润色稿</span>
+          <span class="polish-panel__status" id="polish-status" role="status" aria-live="polite"></span>
+          <button class="icon-button polish-close" id="polish-close" type="button" aria-label="关闭润色稿"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+        </div>
+        <pre class="polish-result" id="polish-result" tabindex="0"></pre>
+        <div class="polish-actions" id="polish-actions" hidden>
+          <button class="button button--secondary" id="polish-discard" type="button">放弃润色</button>
+          <button class="button button--primary" id="polish-apply" type="button">用润色稿替换</button>
+        </div>
+      </section>
+      <div class="report-actions">
+        <button class="button button--secondary" id="polish-report-button" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 4.6L18 9.4l-4.2 1.8L12 16l-1.8-4.8L6 9.4l4.2-1.8L12 3Z"/><path d="M18 15l.9 2.1 2.1.9-2.1.9L18 21l-.9-2.1-2.1-.9 2.1-.9L18 15Z"/></svg>AI 润色</button>
+        <button class="button button--secondary" id="copy-report-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"/></svg>复制报告</button>
+        <button class="button button--secondary" id="download-report-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 20h14"/></svg>下载 Markdown</button>
+        <button class="button button--primary" id="print-report-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5M7 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-3"/><path d="M7 14h10v7H7z"/></svg>打印 / PDF</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="task-dialog records-dialog" id="records-dialog" aria-labelledby="records-title">
+    <div class="records-shell">
+      <div class="dialog-header">
+        <div><p class="eyebrow">ARCHIVE & TRACE</p><h2 id="records-title">归档与记录</h2></div>
+        <button class="icon-button records-close" type="button" aria-label="关闭归档与记录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="records-tabs" role="tablist" aria-label="归档与记录">
+        <button type="button" role="tab" data-records-tab="archive" aria-selected="true" tabindex="0">归档</button>
+        <button type="button" role="tab" data-records-tab="logs" aria-selected="false" tabindex="-1">全部记录</button>
+        <button type="button" role="tab" data-records-tab="backup" aria-selected="false" tabindex="-1">备份</button>
+      </div>
+      <div class="records-filters" id="records-filters">
+        <input id="records-search" type="search" placeholder="搜索工作项、模块或记录内容" aria-label="按关键词搜索归档与记录" autocomplete="off">
+        <select id="records-project" aria-label="按项目筛选归档与记录"><option value="all">全部项目</option></select>
+      </div>
+      <div class="records-body" id="records-body">
+        <section class="records-panel" data-records-panel="archive" role="tabpanel" aria-label="归档">
+          <div class="records-range">
+            <label>从<input type="date" id="archive-start" aria-label="归档完成起始日期"></label>
+            <label>到<input type="date" id="archive-end" aria-label="归档完成结束日期"></label>
+          </div>
+          <p class="records-hint">工作项标记完成满 7 天后自动移出看板、收进这里。归档只影响看板显示，日报、周报和月报的统计口径不变。</p>
+          <p class="records-count" id="archive-count-label"></p>
+          <div id="archive-list"></div>
+        </section>
+        <section class="records-panel" data-records-panel="logs" role="tabpanel" aria-label="全部记录" hidden>
+          <div class="records-range">
+            <label>从<input type="date" id="logs-start" aria-label="记录起始日期"></label>
+            <label>到<input type="date" id="logs-end" aria-label="记录结束日期"></label>
+          </div>
+          <p class="records-count" id="logs-count-label"></p>
+          <div id="logs-list"></div>
+        </section>
+        <section class="records-panel" data-records-panel="backup" role="tabpanel" aria-label="备份" hidden>
+          <div class="backup-card">
+            <p>导出的文件包含全部工作项、工作记录与状态，可保存到本机之外作为备份。</p>
+            <p class="backup-stat" id="backup-stat"></p>
+            <div class="backup-actions">
+              <button class="button button--secondary" id="export-data-button" type="button">导出全部数据</button>
+              <button class="button button--secondary" id="import-data-button" type="button">导入备份</button>
+              <input id="import-file-input" class="visually-hidden" type="file" accept="application/json,.json" aria-label="选择备份文件">
+            </div>
+            <p class="records-hint">导入会用备份内容覆盖当前全部工作项，建议先导出一份当前数据。</p>
+          </div>
+        </section>
+      </div>
+      <div class="records-footer"><button class="button button--secondary" id="records-close-button" type="button">关闭</button></div>
+    </div>
+  </dialog>
+
+  <dialog class="task-dialog settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+    <form id="settings-form" novalidate>
+      <div class="dialog-header">
+        <div><p class="eyebrow">SETTINGS</p><h2 id="settings-title">设置</h2></div>
+        <button class="icon-button settings-close" type="button" aria-label="关闭设置"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="form-body">
+        <section class="settings-section">
+          <div class="settings-section__head">
+            <h3>AI 润色</h3>
+            <span class="settings-badge" id="ai-config-badge">读取中</span>
+          </div>
+          <p class="records-hint">填写 DeepSeek 的 API Key 并保存后，报告页和单条记录的「AI 润色」立即可用，不需要重启服务。Key 只保存在服务器的 data/config.json，不会出现在网页源码或仓库里。</p>
+          <p class="settings-key-state">当前密钥：<strong id="ai-key-masked">读取中…</strong></p>
+          <div class="form-field">
+            <label for="settings-ai-key">API Key <span>留空表示不修改</span></label>
+            <input id="settings-ai-key" type="password" maxlength="300" placeholder="sk-..." autocomplete="off" spellcheck="false">
+          </div>
+          <div class="form-row">
+            <div class="form-field"><label for="settings-ai-base-url">接口地址</label><input id="settings-ai-base-url" type="text" maxlength="300" placeholder="https://api.deepseek.com" autocomplete="off" spellcheck="false"></div>
+            <div class="form-field"><label for="settings-ai-model">模型</label><input id="settings-ai-model" type="text" maxlength="100" placeholder="deepseek-chat" autocomplete="off" spellcheck="false"></div>
+          </div>
+          <div class="settings-test">
+            <button class="button button--secondary" id="ai-test-button" type="button">测试连接</button>
+            <span class="settings-test__result" id="ai-test-result" role="status" aria-live="polite"></span>
+          </div>
+          <button class="settings-link" id="ai-clear-key-button" type="button">清除已保存的 API Key</button>
+        </section>
+        <section class="settings-section">
+          <div class="settings-section__head">
+            <h3>外观</h3>
+            <span class="settings-badge" id="theme-current-badge">跟随系统</span>
+          </div>
+          <p class="records-hint">选择会立即生效，并同步保存到服务器；刷新页面或换设备登录后保持不变。</p>
+          <div class="theme-options" role="radiogroup" aria-label="界面主题">
+            <button type="button" role="radio" aria-checked="false" data-theme-choice="light"><span aria-hidden="true">☀</span>浅色</button>
+            <button type="button" role="radio" aria-checked="false" data-theme-choice="dark"><span aria-hidden="true">☾</span>深色</button>
+            <button type="button" role="radio" aria-checked="true" data-theme-choice="system"><span aria-hidden="true">⌂</span>跟随系统</button>
+          </div>
+        </section>
+        <section class="settings-section settings-password">
+          <div class="settings-section__head"><h3>访问密码</h3></div>
+          <p class="records-hint">修改后当前设备保持登录，其他设备需要重新登录。</p>
+          <div class="form-field"><label for="current-password">当前密码</label><input id="current-password" type="password" autocomplete="current-password"></div>
+          <div class="form-row">
+            <div class="form-field"><label for="new-password">新密码 <span>至少 8 位</span></label><input id="new-password" type="password" autocomplete="new-password" minlength="8"></div>
+            <div class="form-field"><label for="confirm-password">再次输入新密码</label><input id="confirm-password" type="password" autocomplete="new-password"></div>
+          </div>
+          <p class="field-error" id="password-error"></p>
+          <div class="settings-password__actions"><button class="button button--secondary" id="password-submit" type="button">更新密码</button></div>
+        </section>
+        <section class="settings-section">
+          <div class="settings-section__head"><h3>登录有效期</h3></div>
+          <div class="form-field settings-days">
+            <label for="settings-session-days">登录保持天数 <span>1 - 365 天</span></label>
+            <input id="settings-session-days" type="number" min="1" max="365" step="1" inputmode="numeric">
+          </div>
+          <p class="records-hint">修改后只影响下次登录，已经登录的设备继续有效。</p>
+        </section>
+      </div>
+      <div class="dialog-actions"><button class="button button--secondary settings-cancel" type="button">取消</button><button class="button button--primary" id="settings-save-button" type="submit">保存设置</button></div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"><span class="toast__indicator" aria-hidden="true"></span><span id="toast-message"></span><button id="undo-button" type="button" hidden>撤销</button></div>
+  <noscript><p class="noscript">请启用 JavaScript，以使用项目管理和报告功能。</p></noscript>
+  <script src="app.js" defer></script>
+</body>
+</html>

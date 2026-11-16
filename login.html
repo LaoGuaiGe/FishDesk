@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#edf0eb">
+  <script>
+    (function () {
+      try {
+        var serverTheme = '__FISHDESK_THEME__';
+        var valid = serverTheme === 'light' || serverTheme === 'dark' || serverTheme === 'system';
+        var pref = valid ? serverTheme : (localStorage.getItem('fishdesk_theme') || 'system');
+        if (valid) localStorage.setItem('fishdesk_theme', serverTheme);
+        var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0d100e' : '#edf0eb');
+      } catch (error) {}
+    })();
+  </script>
+  <meta name="robots" content="noindex, nofollow">
+  <title>登录 — FishDesk 嵌入式研发工作台</title>
+  <style>
+    :root {
+      --ink: #171a17;
+      --muted: #747b74;
+      --line: rgba(23, 26, 23, 0.09);
+      --accent: #dfff4f;
+      --accent-soft: rgba(223, 255, 79, 0.35);
+      --font-sans: 'Manrope', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      display: flex;
+      min-width: 320px;
+      min-height: 100vh;
+      margin: 0;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: var(--ink);
+      background: #edf0eb;
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+    .ambient {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+    }
+    .ambient::before,
+    .ambient::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(20px);
+    }
+    .ambient::before {
+      right: -12vw;
+      bottom: -24vw;
+      width: 70vw;
+      height: 70vw;
+      background: radial-gradient(circle, rgba(197, 229, 211, 0.86) 0%, rgba(218, 237, 225, 0.45) 48%, transparent 72%);
+    }
+    .ambient::after {
+      top: -22vw;
+      left: -12vw;
+      width: 64vw;
+      height: 64vw;
+      background: radial-gradient(circle, rgba(211, 215, 213, 0.9) 0%, rgba(230, 233, 230, 0.4) 50%, transparent 72%);
+    }
+    .card {
+      width: min(430px, 100%);
+      padding: 44px 40px 36px;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 32px;
+      background: rgba(255, 255, 255, 0.62);
+      box-shadow: 0 24px 70px rgba(36, 46, 38, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      animation: rise 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+    }
+    .eyebrow span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #a6bd38;
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+    h1 {
+      margin: 0 0 14px;
+      font-size: 2.1rem;
+      font-weight: 700;
+      letter-spacing: -0.055em;
+    }
+    h1 span { color: #a6bd38; }
+    .desc {
+      margin: 0 0 30px;
+      color: var(--muted);
+      font-size: 0.8125rem;
+      font-weight: 300;
+      line-height: 1.75;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    input {
+      width: 100%;
+      height: 50px;
+      padding: 0 16px;
+      border: 1px solid rgba(23, 26, 23, 0.1);
+      border-radius: 14px;
+      outline: none;
+      color: inherit;
+      background: rgba(255, 255, 255, 0.72);
+      font: inherit;
+      font-size: 0.9375rem;
+      transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+    }
+    input:focus {
+      border-color: rgba(23, 26, 23, 0.45);
+      background: white;
+      box-shadow: 0 0 0 3px rgba(23, 26, 23, 0.05);
+    }
+    input.is-invalid {
+      border-color: var(--ink);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .error {
+      margin: 10px 2px 0;
+      font-size: 0.75rem;
+      color: #8a3d2f;
+    }
+    button {
+      width: 100%;
+      min-height: 50px;
+      margin-top: 22px;
+      border: 0;
+      border-radius: 999px;
+      color: white;
+      background: var(--ink);
+      box-shadow: 0 10px 24px rgba(23, 26, 23, 0.16);
+      font: inherit;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), background-color 220ms ease;
+    }
+    button:hover { background: #2b302b; transform: translateY(-2px); }
+    button:active { transform: scale(0.98); }
+    button:disabled { cursor: progress; opacity: 0.7; transform: none; }
+    .hint {
+      margin: 22px 0 0;
+      color: #9aa099;
+      font-size: 0.6875rem;
+      line-height: 1.7;
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #edf2ea;
+      --muted: #a7b0a6;
+      --line: rgba(236, 244, 234, 0.12);
+      --accent-soft: rgba(223, 255, 79, 0.15);
+    }
+    html[data-theme="dark"] body { background: #0d100e; }
+    html[data-theme="dark"] .ambient::before {
+      background: radial-gradient(circle, rgba(104, 142, 116, 0.24) 0%, rgba(40, 58, 46, 0.2) 48%, transparent 72%);
+    }
+    html[data-theme="dark"] .ambient::after {
+      background: radial-gradient(circle, rgba(98, 108, 102, 0.26) 0%, rgba(44, 50, 46, 0.18) 50%, transparent 72%);
+    }
+    html[data-theme="dark"] .card {
+      border-color: rgba(255, 255, 255, 0.1);
+      background: rgba(24, 29, 25, 0.9);
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+    html[data-theme="dark"] h1 span { color: #cbe45f; }
+    html[data-theme="dark"] input {
+      border-color: rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+    }
+    html[data-theme="dark"] input:focus {
+      border-color: rgba(255, 255, 255, 0.42);
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+    }
+    html[data-theme="dark"] input.is-invalid { border-color: #ff9d8a; }
+    html[data-theme="dark"] .error { color: #ff9d8a; }
+    html[data-theme="dark"] button {
+      color: #171a17;
+      background: var(--accent);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
+    }
+    html[data-theme="dark"] button:hover { background: #e8ff72; }
+    html[data-theme="dark"] .hint { color: #7e887e; }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px) scale(0.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+    @media (max-width: 480px) {
+      .card { padding: 34px 24px 28px; border-radius: 26px; }
+      h1 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <main class="card">
+    <p class="eyebrow"><span></span>PRIVATE WORKSPACE</p>
+    <h1>FishDesk<span>.</span></h1>
+    <p class="desc">这是你的私人工作台。输入访问密码后，当前设备在有效期内保持登录，不必重复输入。</p>
+    <form id="login-form" novalidate>
+      <label for="password">访问密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入访问密码" required autofocus>
+      <p class="error" id="login-error" role="alert" hidden></p>
+      <button type="submit" id="login-button">进入工作台</button>
+    </form>
+    <p class="hint">登录状态保存在本设备的 HttpOnly Cookie 中，过期后需重新输入密码。</p>
+  </main>
+  <script>
+    'use strict';
+    const form = document.querySelector('#login-form');
+    const input = document.querySelector('#password');
+    const errorBox = document.querySelector('#login-error');
+    const button = document.querySelector('#login-button');
+    const params = new URLSearchParams(location.search);
+    const nextParam = params.get('next') || '/';
+    const next = nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+      input.classList.add('is-invalid');
+    }
+
+    function resetButton() {
+      button.disabled = false;
+      button.textContent = '进入工作台';
+    }
+
+    input.addEventListener('input', () => {
+      input.classList.remove('is-invalid');
+      errorBox.hidden = true;
+    });
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const password = input.value;
+      if (!password) {
+        showError('请输入访问密码');
+        input.focus();
+        return;
+      }
+      button.disabled = true;
+      button.textContent = '验证中…';
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          showError(data.error || '登录失败，请重试');
+          resetButton();
+          input.select();
+          return;
+        }
+        location.replace(next);
+      } catch (error) {
+        showError('网络异常，请稍后重试');
+        resetButton();
+      }
+    });
+  </script>
+</body>
+</html>

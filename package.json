@@ -1,0 +1,12 @@
+{
+  "name": "fishdesk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "FishDesk 嵌入式研发工作台：登记日常任务，自动汇总日报、周报、月报草稿。",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
