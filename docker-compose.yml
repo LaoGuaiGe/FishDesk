@@ -1,11 +1,10 @@
 services:
   fishdesk:
-    build: .
-    image: fishdesk:latest
+    image: ${FISHDESK_IMAGE:?请先通过 deploy/install.sh 设置发布镜像}
     container_name: fishdesk
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:18080:8080"
     environment:
       PASSWORD: ${FISHDESK_PASSWORD:?请先设置 FISHDESK_PASSWORD 环境变量}
       SESSION_DAYS: ${FISHDESK_SESSION_DAYS:-30}
@@ -13,8 +12,13 @@ services:
       AI_API_KEY: ${FISHDESK_AI_API_KEY:-}
       AI_BASE_URL: ${FISHDESK_AI_BASE_URL:-https://api.deepseek.com}
       AI_MODEL: ${FISHDESK_AI_MODEL:-deepseek-chat}
+      FISHDESK_UPDATE_ENABLED: "1"
+      UPDATE_REQUEST_FILE: /update/requests/upgrade.json
+      UPDATE_STATUS_FILE: /update/status/status.json
     volumes:
       - fishdesk-data:/data
+      - ./update/requests:/update/requests:rw
+      - ./update/status:/update/status:ro
 
 volumes:
   fishdesk-data:

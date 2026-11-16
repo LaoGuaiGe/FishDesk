@@ -3072,6 +3072,83 @@ button.task-tag:hover {
   font-size: 0.75rem;
 }
 
+.settings-update__versions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.settings-update__versions span {
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--muted);
+  background: rgba(23, 26, 23, 0.045);
+  font-size: 0.6875rem;
+}
+
+.settings-update__versions strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.settings-update__progress {
+  height: 4px;
+  margin: 12px 0;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(23, 26, 23, 0.08);
+}
+
+.settings-update__progress[hidden] {
+  display: none;
+}
+
+.settings-update__progress span {
+  display: block;
+  width: 38%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ink);
+  animation: update-progress 1.4s ease-in-out infinite;
+}
+
+.settings-update__status {
+  min-height: 38px;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.settings-update__status.is-success {
+  color: #3d6b1f;
+}
+
+.settings-update__status.is-error {
+  color: #a33b2b;
+}
+
+.settings-update__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.settings-update__actions .button {
+  min-height: 40px;
+  padding: 0 18px;
+  font-size: 0.75rem;
+}
+
+@keyframes update-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(370%); }
+}
+
 /* 深色主题：按组件重做背景、边框与文字层级，而非简单反色 */
 html[data-theme="dark"] {
   color-scheme: dark;
@@ -3440,11 +3517,25 @@ html[data-theme="dark"] .settings-badge.is-on {
   background: var(--accent);
 }
 
-html[data-theme="dark"] .settings-test__result.is-success {
+html[data-theme="dark"] .settings-update__versions span {
+  background: rgba(255, 255, 255, 0.055);
+}
+
+html[data-theme="dark"] .settings-update__progress {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+html[data-theme="dark"] .settings-update__progress span {
+  background: var(--accent);
+}
+
+html[data-theme="dark"] .settings-test__result.is-success,
+html[data-theme="dark"] .settings-update__status.is-success {
   color: #b8e58a;
 }
 
 html[data-theme="dark"] .settings-test__result.is-error,
+html[data-theme="dark"] .settings-update__status.is-error,
 html[data-theme="dark"] .field-error,
 html[data-theme="dark"] .footer__sync[data-tone="error"] {
   color: #ff9d8a;

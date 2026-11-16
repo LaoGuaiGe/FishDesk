@@ -21,6 +21,16 @@ const MAX_TASKS = 5000;
 const STATUSES = new Set(['todo', 'doing', 'done']);
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 8;
+const APP_VERSION = require('./package.json').version;
+const UPDATE_ENABLED = process.env.FISHDESK_UPDATE_ENABLED === '1';
+const UPDATE_REQUEST_FILE = process.env.UPDATE_REQUEST_FILE || '/update/requests/upgrade.json';
+const UPDATE_STATUS_FILE = process.env.UPDATE_STATUS_FILE || '/update/status/status.json';
+const UPDATE_RELEASE_URL = 'https://github.com/LaoGuaiGe/FishDesk/releases/latest/download/release.json';
+const UPDATE_IMAGE = 'ghcr.io/laoguaige/fishdesk';
+const UPDATER_VERSION = 1;
+const UPDATE_CACHE_MS = 5 * 60 * 1000;
+const UPDATE_ACTIVE_STATES = new Set(['checking', 'downloading', 'maintenance', 'backing_up', 'restarting', 'verifying', 'rolling_back']);
+const UPDATE_MAINTENANCE_STATES = new Set(['maintenance', 'backing_up', 'restarting', 'verifying', 'rolling_back']);
 
 // AI 润色：默认对接 DeepSeek。密钥等配置优先读取界面「设置」保存的 config.json，
 // 环境变量只作为首次运行的默认值；修改后立即生效，无需重启。
@@ -414,6 +424,180 @@ function readJSON(req) {
     });
     req.on('error', reject);
   });
+}
+
+function parseVersion(value) {
+  if (typeof value !== 'string' || !/^\d+\.\d+\.\d+$/.test(value)) return null;
+  return value.split('.').map(Number);
+}
+
+function compareVersions(left, right) {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  if (!a || !b) return 0;
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
+  }
+  return 0;
+}
+
+function normalizeRelease(value) {
+  if (!value || typeof value !== 'object') return null;
+  if (!parseVersion(value.version) || value.image !== UPDATE_IMAGE) return null;
+  if (typeof value.digest !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(value.digest)) return null;
+  if (!Number.isInteger(value.minUpdaterVersion) || value.minUpdaterVersion < 1) return null;
+  return {
+    version: value.version,
+    image: value.image,
+    digest: value.digest,
+    minUpdaterVersion: value.minUpdaterVersion,
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : null
+  };
+}
+
+function defaultUpdateStatus() {
+  return { state: 'idle', phase: 'idle', message: '尚未开始升级', currentVersion: APP_VERSION, latestVersion: null, backup: null, error: null, updatedAt: null };
+}
+
+async function includePendingUpdate(status) {
+  try {
+    await fsp.access(UPDATE_REQUEST_FILE);
+    return { ...status, state: 'checking', phase: 'checking', message: '升级请求已提交，等待更新器处理', error: null };
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.warn('[fishdesk] 升级请求状态检查失败：', error.message);
+    return status;
+  }
+}
+
+async function readUpdateStatus() {
+  try {
+    const raw = await fsp.readFile(UPDATE_STATUS_FILE, 'utf8');
+    const value = JSON.parse(raw);
+    const status = defaultUpdateStatus();
+    for (const key of ['state', 'phase', 'message', 'currentVersion', 'latestVersion', 'backup', 'error', 'updatedAt']) {
+      if (typeof value[key] === 'string') status[key] = value[key].slice(0, 1000);
+    }
+    return includePendingUpdate(status);
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.warn('[fishdesk] 升级状态读取失败：', error.message);
+    return includePendingUpdate(defaultUpdateStatus());
+  }
+}
+
+async function rejectDuringMaintenance(res) {
+  const status = await readUpdateStatus();
+  if (!UPDATE_MAINTENANCE_STATES.has(status.state) && !UPDATE_MAINTENANCE_STATES.has(status.phase)) return false;
+  sendJSON(res, 503, { error: '系统正在升级，当前修改已保留在本机，请稍后同步' });
+  return true;
+}
+
+let updateReleaseCache = { checkedAt: 0, release: null, error: null };
+
+async function fetchLatestRelease(force = false) {
+  if (!force && Date.now() - updateReleaseCache.checkedAt < UPDATE_CACHE_MS) {
+    if (updateReleaseCache.release) return updateReleaseCache.release;
+    if (updateReleaseCache.error) throw httpError(502, updateReleaseCache.error);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(UPDATE_RELEASE_URL, {
+      headers: { Accept: 'application/json', 'User-Agent': `FishDesk/${APP_VERSION}` },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const release = normalizeRelease(await response.json());
+    if (!release) throw new Error('发布清单格式不正确');
+    updateReleaseCache = { checkedAt: Date.now(), release, error: null };
+    return release;
+  } catch (error) {
+    const message = error.name === 'AbortError' ? '检查更新超时，请检查服务器网络' : '无法读取官方发布信息，请稍后重试';
+    updateReleaseCache = { checkedAt: Date.now(), release: null, error: message };
+    throw httpError(502, message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function updateResponse(status, release, checkError = null) {
+  return {
+    available: UPDATE_ENABLED,
+    currentVersion: APP_VERSION,
+    latestVersion: release ? release.version : null,
+    updateAvailable: Boolean(release && compareVersions(release.version, APP_VERSION) > 0),
+    requiresUpdaterUpdate: Boolean(release && release.minUpdaterVersion > UPDATER_VERSION),
+    checkedAt: updateReleaseCache.checkedAt ? new Date(updateReleaseCache.checkedAt).toISOString() : null,
+    checkError,
+    status
+  };
+}
+
+async function handleGetUpdate(req, res, url) {
+  const status = await readUpdateStatus();
+  let release = updateReleaseCache.release;
+  let checkError = null;
+  if (url.searchParams.get('check') === '1') {
+    try {
+      release = await fetchLatestRelease(true);
+    } catch (error) {
+      checkError = error.message;
+    }
+  }
+  sendJSON(res, 200, updateResponse(status, release, checkError));
+}
+
+async function handleRequestUpdate(req, res) {
+  if (!UPDATE_ENABLED) {
+    sendJSON(res, 503, { error: '当前运行方式未启用网页升级，请使用服务器部署版本' });
+    return;
+  }
+  if (!isJsonRequest(req)) {
+    sendJSON(res, 415, { error: '需要 application/json 请求' });
+    return;
+  }
+  let body;
+  try {
+    body = await readJSON(req);
+  } catch (error) {
+    sendJSON(res, error.status || 400, { error: '请求格式错误' });
+    return;
+  }
+  if (!body || body.action !== 'upgrade' || Object.keys(body).some(key => key !== 'action')) {
+    sendJSON(res, 400, { error: '升级请求只能包含固定的 upgrade 动作' });
+    return;
+  }
+  const status = await readUpdateStatus();
+  if (UPDATE_ACTIVE_STATES.has(status.state) || UPDATE_ACTIVE_STATES.has(status.phase)) {
+    sendJSON(res, 409, { error: '已有升级任务正在执行', status });
+    return;
+  }
+  try {
+    await fsp.access(UPDATE_REQUEST_FILE);
+    sendJSON(res, 409, { error: '升级请求已提交，请等待更新器处理' });
+    return;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  let release;
+  try {
+    release = await fetchLatestRelease();
+  } catch (error) {
+    sendJSON(res, error.status || 502, { error: error.message || '无法检查官方最新版本' });
+    return;
+  }
+  if (release.minUpdaterVersion > UPDATER_VERSION) {
+    sendJSON(res, 409, { error: '本次更新需要先升级服务器更新器，应用和数据尚未改动' });
+    return;
+  }
+  if (compareVersions(release.version, APP_VERSION) <= 0) {
+    sendJSON(res, 409, { error: '当前已经是最新版本' });
+    return;
+  }
+  await fsp.mkdir(path.dirname(UPDATE_REQUEST_FILE), { recursive: true });
+  const temporary = `${UPDATE_REQUEST_FILE}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  await fsp.writeFile(temporary, `${JSON.stringify({ action: 'upgrade', requestedAt: new Date().toISOString() })}\n`, { mode: 0o600 });
+  await fsp.rename(temporary, UPDATE_REQUEST_FILE);
+  sendJSON(res, 202, { ok: true, ...updateResponse({ ...status, state: 'checking', phase: 'checking', message: '升级请求已提交，等待更新器处理' }, release) });
 }
 
 async function handleLogin(req, res) {
@@ -827,7 +1011,9 @@ const server = http.createServer(async (req, res) => {
   const pathname = url.pathname;
   try {
     if (pathname === '/healthz') {
-      sendJSON(res, 200, { ok: true });
+      await getStore();
+      await fsp.access(DATA_DIR, fs.constants.R_OK | fs.constants.W_OK);
+      sendJSON(res, 200, { ok: true, version: APP_VERSION });
       return;
     }
 
@@ -859,6 +1045,7 @@ const server = http.createServer(async (req, res) => {
         sendJSON(res, 401, { error: '未登录' });
         return;
       }
+      if (await rejectDuringMaintenance(res)) return;
       await handleChangePassword(req, res);
       return;
     }
@@ -878,6 +1065,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (pathname === '/api/update') {
+      if (!isAuthenticated(req)) {
+        sendJSON(res, 401, { error: '未登录' });
+        return;
+      }
+      if (req.method === 'GET') {
+        await handleGetUpdate(req, res, url);
+        return;
+      }
+      if (req.method === 'POST') {
+        await handleRequestUpdate(req, res);
+        return;
+      }
+      sendJSON(res, 405, { error: '方法不支持' });
+      return;
+    }
+
     if (pathname === '/api/settings') {
       if (!isAuthenticated(req)) {
         sendJSON(res, 401, { error: '未登录' });
@@ -888,6 +1092,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (req.method === 'PUT') {
+        if (await rejectDuringMaintenance(res)) return;
         await handleUpdateSettings(req, res);
         return;
       }
@@ -923,6 +1128,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (req.method === 'PUT') {
+        if (await rejectDuringMaintenance(res)) return;
         await handlePutTasks(req, res);
         return;
       }
@@ -958,6 +1164,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`[fishdesk] 已启动：http://${HOST}:${PORT}`);
+  console.log(`[fishdesk] 本机访问：http://127.0.0.1:${PORT}`);
   console.log(`[fishdesk] 数据目录：${DATA_DIR}`);
   console.log('[fishdesk] 密码来源：data/auth.json（环境变量仅用于首次初始化）');
   console.log(`[fishdesk] 登录有效期：${getSessionDays()} 天（可在界面设置中修改）`);
@@ -968,3 +1175,17 @@ server.listen(PORT, HOST, () => {
     console.log('[fishdesk] AI 润色：未配置 API Key，登录后到「设置」里填写即可');
   }
 });
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[fishdesk] 收到 ${signal}，等待当前数据写入完成后停止`);
+  server.close(async () => {
+    await writeChain;
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

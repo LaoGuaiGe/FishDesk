@@ -1,0 +1,18 @@
+[Unit]
+Description=FishDesk host updater
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=LC_ALL=C
+ExecStart=/usr/bin/bash /opt/fishdesk/deploy/fishdesk-updater.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=180
+
+[Install]
+WantedBy=multi-user.target

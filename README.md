@@ -36,40 +36,67 @@ PASSWORD="你的访问密码" PORT=8080 node server.js
 
 AI 润色的 API Key、接口地址、模型、界面主题、访问密码和登录有效期都在登录后的「设置」里调整，保存后立即生效，不需要改环境变量或重启服务。
 
-## Docker 运行（推荐）
+## 宝塔面板部署（推荐）
+
+最终效果是：通过 `https://你的域名` 打开 FishDesk，输入密码即可使用；以后修复 BUG 时，登录后在「设置 → 系统升级」里点击升级，不需要 SSH。
+
+### 1. 准备域名和 Docker
+
+1. 在域名服务商处添加一条 A 记录，把域名指向云服务器公网 IP。
+2. 在宝塔软件商店安装 Docker 管理器。
+3. 在云服务器防火墙和宝塔防火墙中开放 80、443；不要向公网开放 18080。
+
+### 2. 安装 FishDesk
+
+把完整项目上传到服务器 `/opt/fishdesk`，然后在宝塔「终端」执行：
 
 ```bash
-FISHDESK_PASSWORD="你的访问密码" \
-docker compose up -d --build
+cd /opt/fishdesk
+sudo bash deploy/install.sh
 ```
 
-也可以把变量写进项目根目录的 `.env`（不要提交到仓库）：
+首次安装按提示输入访问密码。脚本会获取官方发布镜像、创建数据目录、启动 FishDesk 和更新服务；密码只写入服务器 `.env`，不要提交到仓库。
 
-```dotenv
-FISHDESK_PASSWORD=你的访问密码
+数据保存在 Docker 命名卷 `fishdesk-data`；升级前的完整备份保存在 `/opt/fishdesk/backups`，默认保留最近 5 份。升级器会校验备份，并要求备份所需空间之外至少还有 256 MB 可用磁盘空间。停止或重建容器不会删除数据卷，只有显式删除数据卷才会清空工作数据。
+
+### 3. 绑定域名和 HTTPS
+
+1. 在宝塔「网站」中创建你的域名网站。
+2. 设置反向代理，目标地址填写 `http://127.0.0.1:18080`。
+3. 确认反代配置透传以下请求头：
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 ```
 
-然后 `docker compose up -d --build` 即可。AI 相关配置不再需要写进 `.env`，登录后在「设置」里填写即可。
+4. 在宝塔 SSL 页面申请 Let's Encrypt 证书，并开启强制 HTTPS。
+5. 浏览器访问 `https://你的域名`，输入第 2 步设置的密码。
 
-访问 http://服务器IP:8080 。
+公网使用必须启用 HTTPS；纯 HTTP 会让密码和登录 Cookie 在传输中暴露。服务会根据 `X-Forwarded-Proto` 给 Cookie 添加 `Secure`。
 
-数据落在命名卷 `fishdesk-data`（容器内 `/data`）。`docker compose down`、重建容器都不会丢数据；只有显式删除该卷才会清空。
+## 网页一键升级
 
-查看数据卷实际位置：
+1. 登录 FishDesk，打开「设置 → 系统升级」。
+2. 点「检查更新」，确认出现新版本后点「立即升级」。
+3. 页面会依次显示下载、备份、重启和验证进度。升级期间会短暂无法访问，请不要反复点击。
+4. 成功后页面自动恢复；失败会自动恢复旧版本和升级前备份，并显示失败原因。即使更新过程中服务器重启或更新器异常退出，也会根据持久化事务记录继续恢复或确认升级结果。
+
+升级前备份包含工作项、密码哈希、登录密钥和界面配置。网页「归档与记录 → 备份 → 导出全部工作项」只用于自行下载工作数据，不包含密码和服务器配置，两者用途不同。
+
+FishDesk 容器不能执行宿主机命令，也不能指定下载地址。网页只提交固定升级动作，服务器更新器只接受 FishDesk 官方 GitHub Release 的不可变镜像摘要。如果提示“需要先升级服务器更新器”，应用和数据尚未改动，按提示在宝塔终端重新执行一次 `sudo bash /opt/fishdesk/deploy/install.sh`。
+
+### 发布新版本（开发者）
+
+更新 `package.json` 版本号后，创建并推送同名标签，例如：
 
 ```bash
-docker volume inspect fishdesk-data
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
-不使用 compose 时：
-
-```bash
-docker build -t fishdesk .
-docker run -d --name fishdesk -p 8080:8080 \
-  -e PASSWORD="你的访问密码" \
-  -v fishdesk-data:/data \
-  fishdesk
-```
+GitHub Actions 会构建 AMD64/ARM64 镜像并发布 `release.json`。首次发布后，请在 GitHub Packages 中把 `fishdesk` 包设为 Public（镜像不包含数据或密码），否则服务器需要额外配置 GHCR 登录。发布完成后，服务器即可在网页中检测到新版本。
 
 ## 环境变量
 
@@ -84,11 +111,7 @@ docker run -d --name fishdesk -p 8080:8080 \
 | `AI_BASE_URL` | 否 | 兼容 OpenAI 格式接口地址的初始默认值，默认 `https://api.deepseek.com` |
 | `AI_MODEL` | 否 | 模型名的初始默认值，默认 `deepseek-chat` |
 
-`PASSWORD` 只用于首次初始化。之后换密码在登录后的「设置 → 访问密码」里操作，当前设备保持登录，其他设备需要重新登录；想立即让所有设备重新登录，可同时更换 `SESSION_SECRET`（或删除 `data/session.secret`）。
-
-部署在 Nginx / Caddy 反代后面时，请透传 `X-Forwarded-Proto`，服务会据此给 Cookie 加 `Secure`。
-
-公网使用时请务必套一层 HTTPS（Caddy 自动证书最省事）：纯 HTTP 下密码和登录 Cookie 都是明文传输。
+Docker 部署的 `.env` 还包含 `FISHDESK_IMAGE`，由安装和更新脚本维护，不要手工改成非官方镜像。`PASSWORD` 只用于首次初始化。之后换密码在登录后的「设置 → 访问密码」里操作，当前设备保持登录，其他设备需要重新登录。
 
 ## AI 润色（DeepSeek）
 
@@ -151,6 +174,8 @@ docker run -d --name fishdesk -p 8080:8080 \
 | GET | `/api/ai-status` | 返回 `{enabled, model}`，控制润色入口显隐 |
 | GET | `/api/settings` | 返回 AI 配置（密钥脱敏）与登录有效期 |
 | PUT | `/api/settings` | 保存 AI Key/接口地址/模型/登录有效期/主题（`light`、`dark`、`system`），立即生效 |
+| GET | `/api/update` | 读取当前版本、升级状态；加 `?check=1` 检查官方最新版本 |
+| POST | `/api/update` | 仅接受 `{"action":"upgrade"}`，创建固定升级请求，不能指定镜像或下载地址 |
 | POST | `/api/ai/test` | 测试当前或刚填写的 AI 配置，返回成功/失败原因 |
 | POST | `/api/polish` | `{"kind":"report\|log","text":"..."}`，服务端代理调用大模型润色 |
 | GET | `/healthz` | 健康检查 |

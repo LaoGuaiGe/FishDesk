@@ -203,6 +203,14 @@ const elements = {
   aiTestResult: document.querySelector('#ai-test-result'),
   aiClearKeyButton: document.querySelector('#ai-clear-key-button'),
   themeCurrentBadge: document.querySelector('#theme-current-badge'),
+  updateBadge: document.querySelector('#update-badge'),
+  updateCurrentVersion: document.querySelector('#update-current-version'),
+  updateLatestVersion: document.querySelector('#update-latest-version'),
+  updateProgress: document.querySelector('#update-progress'),
+  updateProgressBar: document.querySelector('#update-progress-bar'),
+  updateStatus: document.querySelector('#update-status'),
+  updateCheckButton: document.querySelector('#update-check-button'),
+  updateRunButton: document.querySelector('#update-run-button'),
   syncStatus: document.querySelector('#sync-status'),
   toast: document.querySelector('#toast'),
   toastMessage: document.querySelector('#toast-message'),
@@ -425,6 +433,15 @@ async function flushSave() {
     }
     if (error.status === 409 && error.data) {
       await resolveSyncConflict(error.data, snapshot);
+      return;
+    }
+    if (error.status === 503) {
+      setSyncStatus('系统升级中，修改已保留本机', 'busy');
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        flushSave();
+      }, 5000);
       return;
     }
     setSyncStatus('保存失败，已暂存本机', 'error');
@@ -1866,6 +1883,162 @@ async function importDataFile(file) {
   }
 }
 
+const UPDATE_ACTIVE_STATES = new Set(['checking', 'downloading', 'maintenance', 'backing_up', 'restarting', 'verifying', 'rolling_back']);
+let updateInfo = null;
+let updatePollTimer = null;
+let updateActionPending = false;
+let updateCompletionNotified = false;
+
+function isUpdateActive(data) {
+  const status = data && data.status;
+  return Boolean(status && (UPDATE_ACTIVE_STATES.has(status.state) || UPDATE_ACTIVE_STATES.has(status.phase)));
+}
+
+function renderUpdateInfo(data) {
+  if (!data) return;
+  updateInfo = data;
+  const status = data.status || {};
+  const active = isUpdateActive(data);
+  elements.updateCurrentVersion.textContent = `v${data.currentVersion}`;
+  elements.updateLatestVersion.textContent = data.latestVersion ? `v${data.latestVersion}` : '未检查';
+  elements.updateProgress.hidden = !active;
+  elements.updateCheckButton.disabled = active || updateActionPending;
+  elements.updateRunButton.disabled = active || updateActionPending || !data.available || !data.updateAvailable || data.requiresUpdaterUpdate;
+  elements.updateRunButton.textContent = active ? '升级中…' : '立即升级';
+  elements.updateBadge.classList.toggle('is-on', active || data.updateAvailable || status.state === 'succeeded');
+  elements.updateBadge.textContent = active ? '升级中' : data.updateAvailable ? '有新版本' : status.state === 'failed' ? '升级失败' : `v${data.currentVersion}`;
+  elements.updateStatus.classList.toggle('is-error', Boolean(data.checkError) || status.state === 'failed');
+  elements.updateStatus.classList.toggle('is-success', status.state === 'succeeded');
+  if (data.requiresUpdaterUpdate) {
+    elements.updateStatus.textContent = '本次更新需要先升级服务器更新器，应用和数据尚未改动。请查看部署说明。';
+  } else if (data.checkError) {
+    elements.updateStatus.textContent = data.checkError;
+  } else if (!data.available) {
+    elements.updateStatus.textContent = '当前运行方式未启用网页升级；部署到云服务器后可在这里一键升级。';
+  } else if (active || status.state === 'failed' || status.state === 'succeeded') {
+    elements.updateStatus.textContent = status.message || status.error || '正在处理升级…';
+  } else if (data.updateAvailable) {
+    elements.updateStatus.textContent = `发现新版本 v${data.latestVersion}，升级期间会短暂中断访问。`;
+  } else if (data.latestVersion) {
+    elements.updateStatus.textContent = '当前已经是最新版本。';
+  } else {
+    elements.updateStatus.textContent = '点击“检查更新”获取官方最新版本。';
+  }
+}
+
+function scheduleUpdatePoll() {
+  clearTimeout(updatePollTimer);
+  if (!isUpdateActive(updateInfo) || !elements.settingsDialog.open) return;
+  updatePollTimer = setTimeout(pollUpdateStatus, 2000);
+}
+
+async function pollUpdateStatus() {
+  if (updateActionPending) return;
+  try {
+    const data = await apiRequest('/api/update');
+    const wasActive = isUpdateActive(updateInfo);
+    renderUpdateInfo(data);
+    if (wasActive && data.status && data.status.state === 'succeeded' && !updateCompletionNotified) {
+      updateCompletionNotified = true;
+      showToast(`已升级到 v${data.currentVersion}，数据已恢复同步`);
+      syncFromServer();
+    }
+  } catch (error) {
+    if (error.status === 401) {
+      redirectToLogin();
+      return;
+    }
+    if (isUpdateActive(updateInfo)) {
+      elements.updateStatus.textContent = '服务正在重启，请稍候，页面会自动恢复…';
+    }
+  } finally {
+    scheduleUpdatePoll();
+  }
+}
+
+async function loadUpdateInfo(check = false) {
+  const data = await apiRequest(check ? '/api/update?check=1' : '/api/update');
+  renderUpdateInfo(data);
+  scheduleUpdatePoll();
+  return data;
+}
+
+async function handleUpdateCheck() {
+  if (updateActionPending) return;
+  updateActionPending = true;
+  let failureMessage = '';
+  elements.updateCheckButton.disabled = true;
+  elements.updateStatus.classList.remove('is-error', 'is-success');
+  elements.updateStatus.textContent = '正在检查官方最新版本…';
+  try {
+    await loadUpdateInfo(true);
+  } catch (error) {
+    if (error.status === 401) {
+      redirectToLogin();
+      return;
+    }
+    failureMessage = (error.data && error.data.error) || '检查更新失败，请稍后重试';
+  } finally {
+    updateActionPending = false;
+    if (updateInfo) renderUpdateInfo(updateInfo);
+    if (failureMessage) {
+      elements.updateStatus.textContent = failureMessage;
+      elements.updateStatus.classList.add('is-error');
+    }
+  }
+}
+
+async function waitForCurrentSave() {
+  const startedAt = Date.now();
+  while (saving && Date.now() - startedAt < 15000) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
+async function saveChangesBeforeUpdate() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  await waitForCurrentSave();
+  if (!lastSyncedTasks || JSON.stringify(tasks) !== JSON.stringify(lastSyncedTasks)) await flushSave();
+  await waitForCurrentSave();
+  if (!lastSyncedTasks || JSON.stringify(tasks) !== JSON.stringify(lastSyncedTasks) || saving) {
+    throw new Error('工作记录尚未同步，已保留在本机。请检查网络后再升级。');
+  }
+}
+
+async function handleUpdateRequest() {
+  if (updateActionPending || !updateInfo || !updateInfo.updateAvailable) return;
+  if (!window.confirm(`确定升级到 v${updateInfo.latestVersion}？\n\n系统会先保存当前记录并自动备份全部数据，升级期间会短暂中断访问；失败会自动回滚。`)) return;
+  updateActionPending = true;
+  updateCompletionNotified = false;
+  let failureMessage = '';
+  elements.updateRunButton.disabled = true;
+  elements.updateCheckButton.disabled = true;
+  elements.updateStatus.textContent = '正在保存本机工作记录…';
+  try {
+    await saveChangesBeforeUpdate();
+    const data = await apiRequest('/api/update', { method: 'POST', body: { action: 'upgrade' } });
+    renderUpdateInfo(data);
+    scheduleUpdatePoll();
+  } catch (error) {
+    if (error.status === 401) {
+      redirectToLogin();
+      return;
+    }
+    failureMessage = (error.data && error.data.error) || (error instanceof ApiError ? '升级请求提交失败，当前数据未改动' : error.message);
+  } finally {
+    updateActionPending = false;
+    if (updateInfo) renderUpdateInfo(updateInfo);
+    if (failureMessage) {
+      elements.updateStatus.textContent = failureMessage;
+      elements.updateStatus.classList.add('is-error');
+    }
+    scheduleUpdatePoll();
+  }
+}
+
 function setSettingsTestStatus(kind, message) {
   elements.aiTestResult.textContent = message;
   elements.aiTestResult.classList.toggle('is-success', kind === 'success');
@@ -1897,6 +2070,15 @@ async function openSettingsDialog() {
   setSettingsTestStatus('', '');
   elements.settingsDialog.showModal();
   document.body.classList.add('modal-open');
+  loadUpdateInfo().catch(error => {
+    if (error.status === 401) {
+      redirectToLogin();
+      return;
+    }
+    elements.updateBadge.textContent = '读取失败';
+    elements.updateStatus.textContent = '版本信息读取失败，请关闭设置后重试';
+    elements.updateStatus.classList.add('is-error');
+  });
   try {
     applySettingsToForm(await apiRequest('/api/settings'));
   } catch (error) {
@@ -2090,6 +2272,8 @@ document.querySelector('#settings-button').addEventListener('click', openSetting
 document.querySelector('.settings-close').addEventListener('click', () => elements.settingsDialog.close());
 document.querySelector('.settings-cancel').addEventListener('click', () => elements.settingsDialog.close());
 elements.settingsForm.addEventListener('submit', handleSettingsSubmit);
+elements.updateCheckButton.addEventListener('click', handleUpdateCheck);
+elements.updateRunButton.addEventListener('click', handleUpdateRequest);
 elements.settingsForm.addEventListener('keydown', event => {
   if (event.key === 'Enter' && event.target.closest('.settings-password')) {
     event.preventDefault();
@@ -2131,7 +2315,10 @@ elements.reportDialog.addEventListener('close', () => {
   syncModalClass();
 });
 elements.recordsDialog.addEventListener('close', syncModalClass);
-elements.settingsDialog.addEventListener('close', syncModalClass);
+elements.settingsDialog.addEventListener('close', () => {
+  clearTimeout(updatePollTimer);
+  syncModalClass();
+});
 elements.reportTabs.addEventListener('click', event => {
   const tab = event.target.closest('[data-report-type]');
   if (tab) selectReportType(tab.dataset.reportType);
