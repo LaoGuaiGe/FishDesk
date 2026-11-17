@@ -337,18 +337,26 @@ async function getStore() {
   }
 }
 
-function persist() {
-  const snapshot = `${JSON.stringify(store, null, 0)}\n`;
+function persist(tasks, baseRev) {
   const tmpFile = `${DATA_FILE}.${process.pid}.tmp`;
-  writeChain = writeChain
-    .then(async () => {
+  const operation = writeChain.then(async () => {
+    const current = await getStore();
+    if (baseRev !== current.rev) return { conflict: current };
+    const next = { tasks, rev: current.rev + 1, updatedAt: new Date().toISOString() };
+    const snapshot = `${JSON.stringify(next)}\n`;
+    try {
       await fsp.writeFile(tmpFile, snapshot, 'utf8');
       await fsp.rename(tmpFile, DATA_FILE);
-    })
-    .catch(error => {
+    } catch (error) {
       console.error('[fishdesk] 数据写入失败：', error.message);
-    });
-  return writeChain;
+      throw httpError(503, '数据保存失败，服务器仍保留上次成功保存的数据，请稍后重试');
+    }
+    store = next;
+    return { saved: next };
+  });
+  // Keep the queue usable after a failed write, while exposing failure to this request.
+  writeChain = operation.catch(() => {});
+  return operation;
 }
 
 function validateTasks(value) {
@@ -501,7 +509,7 @@ async function readUpdateStatus() {
 async function rejectDuringMaintenance(res) {
   const status = await readUpdateStatus();
   if (!UPDATE_MAINTENANCE_STATES.has(status.state) && !UPDATE_MAINTENANCE_STATES.has(status.phase)) return false;
-  sendJSON(res, 503, { error: '系统正在升级，当前修改已保留在本机，请稍后同步' });
+  sendJSON(res, 503, { maintenance: true, error: '系统正在升级，当前修改已保留在本机，请稍后同步' });
   return true;
 }
 
@@ -721,16 +729,14 @@ async function handlePutTasks(req, res) {
     sendJSON(res, 400, { error: '工作项数据不合法' });
     return;
   }
-  const current = await getStore();
   const baseRev = Number.isInteger(body.baseRev) ? body.baseRev : -1;
-  if (baseRev !== current.rev) {
+  const result = await persist(incoming, baseRev);
+  if (result.conflict) {
+    const current = result.conflict;
     sendJSON(res, 409, { rev: current.rev, updatedAt: current.updatedAt, tasks: current.tasks });
     return;
   }
-  current.tasks = incoming;
-  current.rev += 1;
-  current.updatedAt = new Date().toISOString();
-  await persist();
+  const current = result.saved;
   sendJSON(res, 200, { rev: current.rev, updatedAt: current.updatedAt });
 }
 

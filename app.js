@@ -435,7 +435,7 @@ async function flushSave() {
       await resolveSyncConflict(error.data, snapshot);
       return;
     }
-    if (error.status === 503) {
+    if (error.status === 503 && error.data && error.data.maintenance === true) {
       setSyncStatus('系统升级中，修改已保留本机', 'busy');
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
