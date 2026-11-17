@@ -89,8 +89,10 @@
     if (typeof month !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return [];
     const [year, number] = month.split('-').map(Number);
     const length = new Date(year, number, 0).getDate();
-    const values = Array.from({ length }, (_, index) => ({ date: `${month}-${String(index + 1).padStart(2, '0')}`,
-      records: 0, ended: new Set(), recordedTasks: new Set() }));
+    return activityValues(tasks, Array.from({ length }, (_, index) => `${month}-${String(index + 1).padStart(2, '0')}`), today);
+  }
+  function activityValues(tasks, dates, today) {
+    const values = dates.map(date => ({ date, records: 0, ended: new Set(), recordedTasks: new Set() }));
     const byDate = new Map(values.map(value => [value.date, value]));
     const finish = (id, date) => { const value = byDate.get(date); if (value && date <= today) value.ended.add(id); };
     tasks.forEach(task => {
@@ -109,5 +111,34 @@
         level: score === 0 ? 0 : score === 1 ? 1 : score <= 3 ? 2 : score <= 6 ? 3 : 4, future: value.date > today };
     });
   }
-  return { day, kind, validDay, completionInfo, kindNames, projectId, projectsFor, entriesFor, snapshotAt, report, completedGroups, monthActivity };
+  function contributionYear(tasks, year, today) {
+    const current = Number(today.slice(0, 4));
+    if (!Number.isInteger(year) || year < 1900 || year > current) return null;
+    const end = new Date(`${year === current ? today : `${year}-12-31`}T12:00:00`);
+    const start = new Date(end);
+    if (year === current) start.setDate(start.getDate() - 364);
+    else { start.setMonth(0, 1); }
+    const dates = [];
+    for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) dates.push(day(date.toISOString()));
+    const values = activityValues(tasks, dates, today);
+    const byDate = new Map(values.map(value => [value.date, value]));
+    const gridStart = new Date(start); gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+    const gridEnd = new Date(end); gridEnd.setDate(gridEnd.getDate() + 6 - gridEnd.getDay());
+    const cells = [];
+    for (let date = new Date(gridStart); date <= gridEnd; date.setDate(date.getDate() + 1)) {
+      const key = day(date.toISOString());
+      cells.push(byDate.get(key) || { date: key, outside: true });
+    }
+    const months = [];
+    values.forEach((value, index) => {
+      if (index === 0 || value.date.endsWith('-01')) {
+        const position = cells.findIndex(cell => cell.date === value.date);
+        months.push({ label: `${Number(value.date.slice(5, 7))}月`, column: Math.floor(position / 7) + 1 });
+      }
+    });
+    return { start: dates[0], end: dates.at(-1), days: values, cells, months, weeks: cells.length / 7,
+      total: values.reduce((sum, value) => sum + value.score, 0), records: values.reduce((sum, value) => sum + value.records, 0),
+      completed: values.reduce((sum, value) => sum + value.completed, 0) };
+  }
+  return { day, kind, validDay, completionInfo, kindNames, projectId, projectsFor, entriesFor, snapshotAt, report, completedGroups, monthActivity, contributionYear };
 });

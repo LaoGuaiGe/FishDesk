@@ -2,38 +2,34 @@
 
 let projectView = 'active';
 let projectTab = 'timeline';
-let activityMonth = '';
+let activityYear = 0;
 let activitySelectedDate = '';
 
 function renderActivityCalendar() {
   const today = dateStamp();
-  if (!activityMonth) activityMonth = today.slice(0, 7);
-  const days = FishDeskModel.monthActivity(tasks, activityMonth, today);
-  const monthInput = document.querySelector('#activity-month');
-  monthInput.value = activityMonth;
-  monthInput.max = today.slice(0, 7);
-  document.querySelector('#activity-next').disabled = activityMonth >= today.slice(0, 7);
+  const currentYear = Number(today.slice(0, 4));
+  if (!activityYear) activityYear = currentYear;
+  const data = FishDeskModel.contributionYear(tasks, activityYear, today);
   const grid = document.querySelector('#activity-grid');
-  grid.style.setProperty('--activity-columns', String(days.length));
-  grid.style.minWidth = `${days.length * 29}px`;
-  grid.innerHTML = days.map(value => {
+  grid.style.setProperty('--activity-columns', String(data.weeks));
+  document.querySelector('#activity-months').style.setProperty('--activity-columns', String(data.weeks));
+  document.querySelector('#activity-months').innerHTML = data.months.map(month => `<span style="grid-column:${month.column}">${month.label}</span>`).join('');
+  grid.innerHTML = data.cells.map(value => {
+    if (value.outside) return '<span class="activity-outside" aria-hidden="true"></span>';
     const label = `${value.date}：${value.records} 条工作记录，${value.completed} 次任务完成`;
-    return `<button class="activity-day${value.date === today ? ' is-today' : ''}" type="button" data-activity-date="${value.date}" data-level="${value.level}" title="${label}" aria-label="${label}" aria-pressed="${value.date === activitySelectedDate}"${value.future ? ' disabled' : ''}>${Number(value.date.slice(-2))}</button>`;
+    return `<button class="activity-day${value.date === today ? ' is-today' : ''}" type="button" data-activity-date="${value.date}" data-level="${value.level}" title="${label}" aria-label="${label}" aria-pressed="${value.date === activitySelectedDate}"></button>`;
   }).join('');
-  const chosen = days.find(value => value.date === activitySelectedDate);
+  const years = new Set([currentYear, currentYear - 1, currentYear - 2]);
+  tasks.forEach(task => {
+    (task.workLogs || []).forEach(log => { const year = Number(log.date.slice(0, 4)); if (year >= 1900 && year <= currentYear) years.add(year); });
+    const year = Number(FishDeskModel.completionInfo(task).date.slice(0, 4)); if (year >= 1900 && year <= currentYear) years.add(year);
+  });
+  document.querySelector('#activity-years').innerHTML = [...years].sort((a, b) => b - a).map(year => `<button type="button" data-activity-year="${year}" aria-pressed="${year === activityYear}">${year}</button>`).join('');
+  document.querySelector('#activity-summary').textContent = `${activityYear === currentYear ? '过去一年' : `${activityYear} 年`}共 ${data.total} 次工作活动`;
+  const chosen = data.days.find(value => value.date === activitySelectedDate);
   document.querySelector('#activity-detail').textContent = chosen
     ? `${chosen.date} · ${chosen.records} 条工作记录 · ${chosen.completed} 次任务完成`
-    : `本月 ${days.reduce((sum, value) => sum + value.records, 0)} 条工作记录 · ${days.reduce((sum, value) => sum + value.completed, 0)} 次任务完成`;
-}
-
-function shiftActivityMonth(step) {
-  const date = parseDateStamp(`${activityMonth || dateStamp().slice(0, 7)}-01`);
-  date.setMonth(date.getMonth() + step);
-  const month = dateStamp(date).slice(0, 7);
-  if (month > dateStamp().slice(0, 7)) return;
-  activityMonth = month;
-  activitySelectedDate = '';
-  renderActivityCalendar();
+    : `${data.start} — ${data.end} · ${data.records} 条工作记录 · ${data.completed} 次任务完成`;
 }
 
 function returnToProjectHome(event) {
@@ -155,11 +151,10 @@ function renderCompletedTasks(list, completed) {
 }
 
 document.querySelector('.brand').addEventListener('click', returnToProjectHome);
-document.querySelector('#activity-prev').addEventListener('click', () => shiftActivityMonth(-1));
-document.querySelector('#activity-next').addEventListener('click', () => shiftActivityMonth(1));
-document.querySelector('#activity-month').addEventListener('change', event => {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value) || event.target.value > dateStamp().slice(0, 7)) return;
-  activityMonth = event.target.value; activitySelectedDate = ''; renderActivityCalendar();
+document.querySelector('#activity-years').addEventListener('click', event => {
+  const button = event.target.closest('[data-activity-year]');
+  if (!button) return;
+  activityYear = Number(button.dataset.activityYear); activitySelectedDate = ''; renderActivityCalendar();
 });
 document.querySelector('#activity-grid').addEventListener('click', event => {
   const button = event.target.closest('[data-activity-date]');
