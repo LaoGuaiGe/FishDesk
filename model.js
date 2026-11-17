@@ -114,10 +114,8 @@
   function contributionYear(tasks, year, today) {
     const current = Number(today.slice(0, 4));
     if (!Number.isInteger(year) || year < 1900 || year > current) return null;
-    const end = new Date(`${year === current ? today : `${year}-12-31`}T12:00:00`);
-    const start = new Date(end);
-    if (year === current) start.setDate(start.getDate() - 364);
-    else { start.setMonth(0, 1); }
+    const start = new Date(`${year}-01-01T12:00:00`);
+    const end = new Date(`${year}-12-31T12:00:00`);
     const dates = [];
     for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) dates.push(day(date.toISOString()));
     const values = activityValues(tasks, dates, today);

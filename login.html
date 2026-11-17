@@ -22,6 +22,7 @@
   <link rel="icon" type="image/svg+xml" href="/assets/brand/fishdesk-app-icon.svg">
   <link rel="alternate icon" href="/favicon.ico?v=1.1.2">
   <link rel="apple-touch-icon" href="/assets/brand/favicon-256.png">
+  <link rel="stylesheet" href="/assets/background/background.css">
   <style>
     :root {
       --ink: #171a17;
@@ -77,10 +78,8 @@
       padding: 44px 40px 36px;
       border: 1px solid rgba(255, 255, 255, 0.75);
       border-radius: 32px;
-      background: rgba(255, 255, 255, 0.62);
+      background: #f7f9f7;
       box-shadow: 0 24px 70px rgba(36, 46, 38, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-      backdrop-filter: blur(28px);
-      -webkit-backdrop-filter: blur(28px);
       animation: rise 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .eyebrow {
@@ -216,7 +215,7 @@
     }
     html[data-theme="dark"] .card {
       border-color: rgba(255, 255, 255, 0.1);
-      background: rgba(24, 29, 25, 0.9);
+      background: #181d19;
       box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
     html[data-theme="dark"] h1 span { color: #cbe45f; }
@@ -253,6 +252,7 @@
 </head>
 <body>
   <div class="ambient" aria-hidden="true"></div>
+  <div class="work-background" id="work-background" aria-hidden="true"></div>
   <main class="card">
     <p class="eyebrow"><span></span>PRIVATE WORKSPACE</p>
     <h1 aria-label="FishDesk"><img class="brand-logo brand-logo--light" src="/assets/brand/fishdesk-logo-horizontal.svg" width="1700" height="350" alt=""><img class="brand-logo brand-logo--dark" src="/assets/brand/fishdesk-logo-horizontal-dark.svg" width="1700" height="350" alt=""></h1>
@@ -270,6 +270,8 @@
     </form>
     <p class="hint">登录状态保存在本设备的 HttpOnly Cookie 中，过期后需重新输入密码。</p>
   </main>
+  <script src="/assets/background/hero-data.js"></script>
+  <script src="/assets/background/background.js"></script>
   <script>
     'use strict';
     const form = document.querySelector('#login-form');

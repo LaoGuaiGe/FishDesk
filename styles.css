@@ -5,8 +5,8 @@
   --muted: #747b74;
   --soft-muted: #9aa099;
   --line: rgba(23, 26, 23, 0.09);
-  --surface: rgba(255, 255, 255, 0.58);
-  --card: rgba(255, 255, 255, 0.86);
+  --surface: #f7f9f7;
+  --card: #fbfcfb;
   --accent: #dfff4f;
   --accent-soft: rgba(223, 255, 79, 0.35);
   --shadow-sm: 0 4px 18px rgba(36, 46, 38, 0.035);
@@ -492,16 +492,14 @@ h1 span {
   padding: 22px 18px 18px;
   border: 1px solid rgba(255, 255, 255, 0.64);
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.38);
+  background: var(--surface);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   transition: background-color 250ms ease, border-color 250ms ease;
 }
 
 .task-column.is-over {
   border-color: rgba(147, 169, 43, 0.45);
-  background: rgba(255, 255, 255, 0.58);
+  background: #eef3e6;
 }
 
 .column-header {
@@ -615,7 +613,7 @@ h1 span {
 }
 
 .task-card--done {
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--surface);
   box-shadow: none;
 }
 
@@ -960,9 +958,8 @@ h1 span {
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 30px;
   color: var(--ink);
-  background: rgba(247, 249, 245, 0.96);
+  background: #f7f9f5;
   box-shadow: 0 36px 100px rgba(23, 26, 23, 0.24);
-  backdrop-filter: blur(30px);
 }
 
 .task-dialog[open] {
@@ -1334,7 +1331,7 @@ h1 span {
   padding: 28px;
   border: 1px solid rgba(255, 255, 255, 0.85);
   border-radius: 23px;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--surface);
 }
 
 .report-cover .eyebrow {
@@ -1427,7 +1424,7 @@ h1 span {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 19px;
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--surface);
 }
 
 .report-lists h4 {
@@ -1752,7 +1749,7 @@ h1 span {
   padding: 34px 38px 30px;
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--card);
   box-shadow: var(--shadow-sm);
 }
 
@@ -3161,8 +3158,8 @@ html[data-theme="dark"] {
   --muted: #a7b0a6;
   --soft-muted: #7e887e;
   --line: rgba(236, 244, 234, 0.12);
-  --surface: rgba(27, 32, 28, 0.74);
-  --card: rgba(36, 42, 37, 0.92);
+  --surface: #1b201c;
+  --card: #242a25;
   --accent: #dfff4f;
   --accent-soft: rgba(223, 255, 79, 0.15);
   --shadow-sm: 0 6px 20px rgba(0, 0, 0, 0.3);
@@ -3246,13 +3243,13 @@ html[data-theme="dark"] .progress-track span {
 
 html[data-theme="dark"] .task-column {
   border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--surface);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 html[data-theme="dark"] .task-column.is-over {
   border-color: rgba(223, 255, 79, 0.42);
-  background: rgba(223, 255, 79, 0.06);
+  background: #252d20;
 }
 
 html[data-theme="dark"] .task-count {
@@ -3268,7 +3265,7 @@ html[data-theme="dark"] .task-card:hover {
 }
 
 html[data-theme="dark"] .task-card--done {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface);
 }
 
 html[data-theme="dark"] .task-card--done h4 {
@@ -3336,7 +3333,7 @@ html[data-theme="dark"] .done-toggle:hover {
 
 html[data-theme="dark"] .task-dialog {
   border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(24, 29, 25, 0.97);
+  background: #181d19;
   box-shadow: 0 36px 100px rgba(0, 0, 0, 0.6);
 }
 
@@ -3424,15 +3421,15 @@ html[data-theme="dark"] .report-document {
 }
 
 html[data-theme="dark"] .report-cover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--surface);
 }
 
 html[data-theme="dark"] .report-document {
-  background: rgba(255, 255, 255, 0.055);
+  background: var(--card);
 }
 
 html[data-theme="dark"] .report-lists > section {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface);
 }
 
 html[data-theme="dark"] .report-list li,

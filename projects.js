@@ -25,7 +25,7 @@ function renderActivityCalendar() {
     const year = Number(FishDeskModel.completionInfo(task).date.slice(0, 4)); if (year >= 1900 && year <= currentYear) years.add(year);
   });
   document.querySelector('#activity-years').innerHTML = [...years].sort((a, b) => b - a).map(year => `<button type="button" data-activity-year="${year}" aria-pressed="${year === activityYear}">${year}</button>`).join('');
-  document.querySelector('#activity-summary').textContent = `${activityYear === currentYear ? '过去一年' : `${activityYear} 年`}共 ${data.total} 次工作活动`;
+  document.querySelector('#activity-summary').textContent = `${activityYear} 年共 ${data.total} 次工作活动`;
   const chosen = data.days.find(value => value.date === activitySelectedDate);
   document.querySelector('#activity-detail').textContent = chosen
     ? `${chosen.date} · ${chosen.records} 条工作记录 · ${chosen.completed} 次任务完成`

@@ -23,7 +23,7 @@
 .project-view-tabs button, .project-detail-tabs button { border: 0; background: transparent; color: var(--muted); padding: 10px 15px; border-radius: 9px; font: inherit; font-size: 13px; cursor: pointer; }
 .project-view-tabs button[aria-pressed="true"], .project-detail-tabs button[aria-pressed="true"] { background: var(--ink); color: var(--bg, #f4f6f1); }
 .project-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
-.project-card { display: flex; flex-direction: column; padding: 23px; border: 1px solid var(--line); border-radius: 20px; background: rgba(255,255,255,.63); box-shadow: 0 8px 24px rgba(23,26,23,.025); }
+.project-card { display: flex; flex-direction: column; padding: 23px; border: 1px solid var(--line); border-radius: 20px; background: #f7f9f7; box-shadow: 0 8px 24px rgba(23,26,23,.025); }
 .project-card__eyebrow { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--muted); font-size: 12px; }
 .project-state { padding: 4px 9px; border-radius: 20px; background: #e6efdb; color: #45653b; white-space: nowrap; }
 .project-state.is-completed { background: rgba(127,140,127,.12); color: var(--muted); }
@@ -53,7 +53,7 @@
 .project-day { padding: 8px 0 18px 22px; margin-left: 5px; border-left: 1px solid var(--line); }
 .project-day h4 { font-size: 15px; margin-bottom: 14px; }
 .project-day h4 span { font-size: 11px; font-weight: 400; color: var(--muted); margin-left: 10px; }
-.project-timeline-item { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 10px 0; background: rgba(255,255,255,.55); }
+.project-timeline-item { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin: 10px 0; background: #f7f9f7; }
 .project-timeline-item > div { display: flex; gap: 12px; align-items: center; }
 .project-timeline-item button { font: inherit; font-size: 13px; font-weight: 600; border: 0; background: none; color: var(--ink); cursor: pointer; text-align: left; }
 .project-timeline-item p { font-size: 13px; line-height: 1.8; margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -72,7 +72,7 @@
 .report-project > h4 { font-size: 19px; margin: 24px 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .report-project .report-section h5 { font-size: 14px; margin: 16px 0 8px; }
 .report-history-note { font-size: 12px; line-height: 1.8; color: var(--muted); padding: 16px 0; border-top: 1px solid var(--line); }
-html[data-theme="dark"] .project-card, html[data-theme="dark"] .project-timeline-item { background: rgba(27,33,28,.8); }
+html[data-theme="dark"] .project-card, html[data-theme="dark"] .project-timeline-item { background: #1b211c; }
 html[data-theme="dark"] .project-toolbar input, html[data-theme="dark"] .project-log-entry select, html[data-theme="dark"] .project-timeline-controls select, html[data-theme="dark"] .project-timeline-controls input, html[data-theme="dark"] .completed-controls input, html[data-theme="dark"] .completed-controls select, html[data-theme="dark"] .form-field select { background: #1b211c; }
 html[data-theme="dark"] .project-state { background: rgba(141,182,108,.15); color: #bcdaa1; }
 html[data-theme="dark"] .record-kind { color: #aac0e0; }

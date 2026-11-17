@@ -70,6 +70,9 @@ const PUBLIC_ASSETS = new Map([
   ['/assets/brand/fishdesk-app-icon.svg', 'assets/brand/fishdesk-app-icon.svg'],
   ['/assets/brand/favicon-32.png', 'assets/brand/favicon-32.png'],
   ['/assets/brand/favicon-256.png', 'assets/brand/favicon-256.png'],
+  ['/assets/background/background.css', 'assets/background/background.css'],
+  ['/assets/background/background.js', 'assets/background/background.js'],
+  ['/assets/background/hero-data.js', 'assets/background/hero-data.js'],
   ['/favicon.ico', 'assets/brand/favicon.ico']
 ]);
 const CONTENT_TYPES = {
