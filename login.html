@@ -144,6 +144,32 @@
       font-size: 0.75rem;
       color: #8a3d2f;
     }
+    .password-field { position: relative; }
+    .password-field input { padding-right: 52px; }
+    .password-field input::-ms-reveal { display: none; }
+    .password-field .password-toggle {
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      min-height: 0;
+      margin: 0;
+      padding: 9px;
+      border: 0;
+      border-radius: 8px;
+      color: var(--muted);
+      background: transparent;
+      box-shadow: none;
+      display: grid;
+      place-items: center;
+    }
+    .password-field .password-toggle:hover { color: var(--ink); background: var(--accent-soft); }
+    .password-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+    .password-toggle svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .password-toggle .eye-slash { display: none; }
+    .password-toggle[aria-pressed="true"] .eye-slash { display: block; }
     button {
       width: 100%;
       min-height: 50px;
@@ -227,7 +253,12 @@
     <p class="desc">这是你的私人工作台。输入访问密码后，当前设备在有效期内保持登录，不必重复输入。</p>
     <form id="login-form" novalidate>
       <label for="password">访问密码</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入访问密码" required autofocus>
+      <div class="password-field">
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入访问密码" required autofocus>
+        <button id="password-toggle" type="button" class="password-toggle" aria-label="显示密码" aria-pressed="false" aria-controls="password">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/><path class="eye-slash" d="m3 3 18 18"/></svg>
+        </button>
+      </div>
       <p class="error" id="login-error" role="alert" hidden></p>
       <button type="submit" id="login-button">进入工作台</button>
     </form>
@@ -239,11 +270,23 @@
     const input = document.querySelector('#password');
     const errorBox = document.querySelector('#login-error');
     const button = document.querySelector('#login-button');
+    const passwordToggle = document.querySelector('#password-toggle');
     const params = new URLSearchParams(location.search);
     const nextParam = params.get('next') || '/';
     const next = nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
     let blockedUntil = 0;
     let countdownTimer = null;
+
+    function setPasswordVisible(visible) {
+      input.type = visible ? 'text' : 'password';
+      passwordToggle.setAttribute('aria-label', visible ? '隐藏密码' : '显示密码');
+      passwordToggle.setAttribute('aria-pressed', String(visible));
+    }
+
+    passwordToggle.addEventListener('click', () => {
+      setPasswordVisible(input.type === 'password');
+      input.focus();
+    });
 
     function showError(message) {
       errorBox.textContent = message;
@@ -294,6 +337,7 @@
       }
       button.disabled = true;
       button.textContent = '验证中…';
+      setPasswordVisible(false);
       try {
         const response = await fetch('/api/login', {
           method: 'POST',
