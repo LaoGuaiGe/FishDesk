@@ -4,8 +4,6 @@ const STORAGE_KEY = 'daylight.engineering.v2';
 const LEGACY_STORAGE_KEY = 'daylight.tasks.v1';
 const MIGRATION_KEY = 'daylight.server-migrated.v1';
 const STATUSES = ['todo', 'doing', 'done'];
-const DONE_PREVIEW = 4;
-const ARCHIVE_AFTER_DAYS = 7;
 const STATUS_NAMES = { todo: '待办', doing: '进行中', done: '已完成' };
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -54,69 +52,6 @@ function createId() {
     : `item-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function createSampleTasks() {
-  const entries = [
-    {
-      id: 'eng-1', project: '机器鸭', module: '扩展板 V3', title: '扩展板 V3 打样优化', status: 'done', offset: 0,
-      content: '优化器件布局，不再挡住结构安装；新增 USB 支持 USB 摄像头；增加电源保护，避免电池线序买错后一插就烧。',
-      next: '打样回来后复装，并验证 USB 摄像头与电源保护。'
-    },
-    {
-      id: 'eng-2', project: 'D126 模组', module: '硬件设计', title: '模组删减引脚并重新 Layout', status: 'doing', offset: 0,
-      content: '每边删除 2 个引脚，需要重新布线；已重新下单 Layout。',
-      next: '复核新 Layout 的封装、引脚定义和可制造性。'
-    },
-    {
-      id: 'eng-3', project: 'Debian SDK', module: '用户编译问题', title: '排查 Debian 10 无法编译问题', status: 'doing', offset: 0,
-      content: '重新部署 Linux Kernel 4.9 SDK，目前仍在编译，问题继续跟进。',
-      next: '完成全量编译，定位并记录剩余依赖或补丁问题。',
-      issue: 'Debian 10 编译问题尚未闭环，需要继续保留复现环境和编译日志。'
-    },
-    {
-      id: 'eng-4', project: '泰山派', module: '系统镜像与网页测试', title: '制作 Kernel 6.1 Debian 自定义镜像', status: 'done', offset: 0,
-      content: '使用之前机器鸭的网页代码，自制 Kernel 6.1 Debian 自定义镜像；Type-C 连接泰山派后，可通过网页控制屏幕切换，并进行 Wi-Fi、EC20、网口、音频和内存测试。',
-      next: '整理镜像版本、烧录方法和网页测试项说明。'
-    },
-    {
-      id: 'eng-5', project: '机器鸭', module: '硬件修正', title: '第 3 版硬件修正与扩展板标定', status: 'done', offset: -1,
-      content: '用户反馈问题完成第 3 版硬件修正，布局布线完成；涂鸦回来的鸭子更换新扩展板后，重新标定测试 OK。',
-      next: ''
-    },
-    {
-      id: 'eng-6', project: '机器鸭', module: '海外开源', title: '海外平台开源与资料补全', status: 'done', offset: -1,
-      content: '机器鸭开源到海外平台，教程、软件、硬件开源全部完成；软件开源中补充教程和硬件地址说明。',
-      next: ''
-    },
-    {
-      id: 'eng-7', project: '机器鸭', module: 'WIKI', title: '修正组装文档与规格说明', status: 'done', offset: -1,
-      content: '修复左右腿 ID 图文不一致，补充风扇和铜柱规格；组装页增加先分配电机 ID 的提醒，避免返工。',
-      next: ''
-    },
-    {
-      id: 'eng-8', project: '机器鸭', module: '网页标定与控制', title: '网页标定与控制增加中英切换', status: 'done', offset: -1,
-      content: '网页标定与控制支持中英切换，镜像重新输出。',
-      next: '补充镜像下载与使用说明。'
-    }
-  ];
-
-  return entries.map(entry => {
-    const workDate = offsetDateStamp(entry.offset);
-    const timestamp = new Date(`${workDate}T12:00:00`).toISOString();
-    return {
-      id: entry.id,
-      project: entry.project,
-      module: entry.module,
-      title: entry.title,
-      status: entry.status,
-      nextStep: entry.next,
-      issue: entry.issue || '',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      completedAt: entry.status === 'done' ? timestamp : null,
-      workLogs: [{ id: `log-${entry.id}`, date: workDate, content: entry.content }]
-    };
-  });
-}
 
 const elements = {
   board: document.querySelector('#board'),
@@ -218,17 +153,19 @@ const elements = {
 };
 
 let tasks = [];
+let projects = [];
+let lastSyncedProjects = null;
 let booted = false;
 let serverRev = 0;
 let lastSyncedTasks = null;
 let saveTimer = null;
 let saving = false;
+let saveRequested = false;
 let draggedId = null;
 let toastTimer = null;
 let undoHandler = null;
 let pendingLogUndo = null;
 let selectedProject = 'all';
-let doneExpanded = false;
 let activeReportType = 'day';
 let activeReportDate = dateStamp();
 let aiEnabled = false;
@@ -247,7 +184,9 @@ function normalizeTask(task) {
     ? task.workLogs.filter(log => log && isDateStamp(log.date) && typeof log.content === 'string' && log.content.trim()).map(log => ({
       id: typeof log.id === 'string' ? log.id : createId(),
       date: log.date,
-      content: log.content.trim().slice(0, 600)
+      content: log.content.trim().slice(0, 600),
+      kind: FishDeskModel.kind(log),
+      ...(log.snapshot && typeof log.snapshot === 'object' ? { snapshot: { ...log.snapshot } } : {})
     }))
     : [];
 
@@ -274,6 +213,8 @@ function normalizeTask(task) {
     completedAt: task.status === 'done'
       ? (isValidDate(task.completedAt) ? task.completedAt : updatedAt)
       : null,
+    completedOn: typeof task.completedOn === 'string' ? task.completedOn : '',
+    statusHistory: Array.isArray(task.statusHistory) ? task.statusHistory.filter(s => s && isDateStamp(s.date) && STATUSES.includes(s.status)).map(s => ({ ...s })) : [],
     workLogs
   };
 }
@@ -328,7 +269,7 @@ function readCachedTasks() {
       const customTasks = Array.isArray(parsed)
         ? normalizeTaskList(parsed.filter(task => task && typeof task.id === 'string' && !task.id.startsWith('sample-')))
         : [];
-      return [...createSampleTasks(), ...customTasks];
+      return customTasks;
     }
     return null;
   } catch (error) {
@@ -340,6 +281,7 @@ function readCachedTasks() {
 function cacheTasks() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    localStorage.setItem('fishdesk.projects.v1', JSON.stringify(projects));
   } catch (error) {
     console.warn('本机缓存写入失败。', error);
   }
@@ -386,10 +328,13 @@ async function migrateLocalCache(serverTasks, rev) {
     return;
   }
   try {
-    const data = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: rev, tasks: merged } });
+    const mergedProjects = FishDeskModel.projectsFor(merged, projects);
+    const data = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: rev, tasks: merged, projects: mergedProjects } });
     tasks = merged;
     serverRev = data.rev;
-    lastSyncedTasks = merged;
+    lastSyncedTasks = JSON.parse(JSON.stringify(merged));
+    projects = mergedProjects;
+    lastSyncedProjects = JSON.parse(JSON.stringify(projects));
     cacheTasks();
     render({ animate: true });
     markMigratedToServer();
@@ -406,6 +351,7 @@ function setSyncStatus(text, tone = 'ok') {
 }
 
 function saveTasks() {
+  projects = FishDeskModel.projectsFor(tasks, projects);
   polishedReport = null;
   cacheTasks();
   if (!booted) return;
@@ -417,14 +363,17 @@ function saveTasks() {
 }
 
 async function flushSave() {
-  if (saving || !booted) return;
+  if (!booted) return;
+  if (saving) { saveRequested = true; return; }
   saving = true;
   setSyncStatus('正在保存…', 'busy');
-  const snapshot = tasks.map(task => ({ ...task, workLogs: task.workLogs.map(log => ({ ...log })) }));
+  const snapshot = JSON.parse(JSON.stringify(tasks));
+  const projectSnapshot = JSON.parse(JSON.stringify(projects));
   try {
-    const data = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: serverRev, tasks: snapshot } });
+    const data = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: serverRev, tasks: snapshot, projects: projectSnapshot } });
     serverRev = data.rev;
     lastSyncedTasks = snapshot;
+    lastSyncedProjects = projectSnapshot;
     setSyncStatus('已同步到服务器');
   } catch (error) {
     if (error.status === 401) {
@@ -448,6 +397,10 @@ async function flushSave() {
     showToast('保存失败，已暂存本机，请检查网络');
   } finally {
     saving = false;
+    if (saveRequested) {
+      saveRequested = false;
+      queueMicrotask(flushSave);
+    }
   }
 }
 
@@ -480,14 +433,18 @@ function mergeTaskLists(base, local, remote) {
 }
 
 async function resolveSyncConflict(remote, localSnapshot) {
+  localSnapshot = tasks;
   const remoteTasks = normalizeTaskList(Array.isArray(remote.tasks) ? remote.tasks : []);
   const baseTasks = Array.isArray(lastSyncedTasks) ? normalizeTaskList(lastSyncedTasks) : [];
   const merged = mergeTaskLists(baseTasks, localSnapshot, remoteTasks);
+  const mergedProjects = FishDeskModel.projectsFor(merged, mergeTaskLists(lastSyncedProjects || [], projects, remote.projects || []));
   try {
-    const data = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: remote.rev, tasks: merged } });
+    const data = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: remote.rev, tasks: merged, projects: mergedProjects } });
     tasks = merged;
     serverRev = data.rev;
-    lastSyncedTasks = merged;
+    lastSyncedTasks = JSON.parse(JSON.stringify(merged));
+    projects = mergedProjects;
+    lastSyncedProjects = JSON.parse(JSON.stringify(projects));
     cacheTasks();
     setSyncStatus('已同步到服务器');
     render({ animate: true });
@@ -504,13 +461,16 @@ async function resolveSyncConflict(remote, localSnapshot) {
 async function syncFromServer() {
   if (!booted || saving || saveTimer || document.visibilityState === 'hidden') return;
   if (lastSyncedTasks && JSON.stringify(tasks) !== JSON.stringify(lastSyncedTasks)) return;
+  if (lastSyncedProjects && JSON.stringify(projects) !== JSON.stringify(lastSyncedProjects)) return;
   try {
     const data = await apiRequest('/api/tasks');
     if (!data || data.rev === serverRev) return;
     const remoteTasks = normalizeTaskList(Array.isArray(data.tasks) ? data.tasks : []);
     tasks = remoteTasks;
     serverRev = data.rev;
-    lastSyncedTasks = remoteTasks;
+    lastSyncedTasks = JSON.parse(JSON.stringify(remoteTasks));
+    projects = FishDeskModel.projectsFor(tasks, data.projects || []);
+    lastSyncedProjects = JSON.parse(JSON.stringify(projects));
     polishedReport = null;
     cacheTasks();
     setSyncStatus('已同步到服务器');
@@ -536,7 +496,7 @@ function startSync() {
       keepalive: true,
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ baseRev: serverRev, tasks })
+      body: JSON.stringify({ baseRev: serverRev, tasks, projects })
     }).catch(() => {});
   });
 }
@@ -625,7 +585,9 @@ async function boot() {
       return;
     }
     const cached = readCachedTasks();
-    tasks = cached && cached.length ? cached : createSampleTasks();
+    tasks = cached && cached.length ? cached : [];
+    try { projects = FishDeskModel.projectsFor(tasks, JSON.parse(localStorage.getItem('fishdesk.projects.v1') || '[]')); }
+    catch { projects = FishDeskModel.projectsFor(tasks); }
     setSyncStatus('未连接服务器，显示本机缓存', 'error');
     render();
     showToast('无法连接服务器，当前显示本机缓存，修改暂不会同步');
@@ -633,11 +595,14 @@ async function boot() {
   }
 
   const serverTasks = normalizeTaskList(Array.isArray(data.tasks) ? data.tasks : []);
+  projects = FishDeskModel.projectsFor(serverTasks, data.projects || []);
+  lastSyncedProjects = JSON.parse(JSON.stringify(projects));
   if (data.rev === 0 && !serverTasks.length) {
     const cached = readCachedTasks();
-    tasks = cached && cached.length ? cached : createSampleTasks();
+    tasks = cached && cached.length ? cached : [];
     serverRev = 0;
     lastSyncedTasks = [];
+    projects = FishDeskModel.projectsFor(tasks, projects);
     booted = true;
     cacheTasks();
     render();
@@ -647,7 +612,7 @@ async function boot() {
   } else {
     tasks = serverTasks;
     serverRev = data.rev;
-    lastSyncedTasks = serverTasks;
+    lastSyncedTasks = JSON.parse(JSON.stringify(serverTasks));
     booted = true;
     cacheTasks();
     setSyncStatus('已同步到服务器');
@@ -657,27 +622,34 @@ async function boot() {
   startSync();
 }
 
-function setTaskStatus(task, status) {
+function recordTaskSnapshot(task, date = dateStamp()) {
+  task.statusHistory = task.statusHistory || [];
+  task.statusHistory.push({ date, status: task.status, nextStep: task.nextStep || '', issue: task.issue || '', recordedAt: new Date().toISOString() });
+}
+
+function setTaskStatus(task, status, effectiveDate = dateStamp()) {
   if (task.status === status) return;
   task.status = status;
   task.completedAt = status === 'done' ? new Date().toISOString() : null;
+  task.completedOn = status === 'done' ? effectiveDate : '';
   task.updatedAt = new Date().toISOString();
+  recordTaskSnapshot(task, effectiveDate);
 }
 
 function getLatestLog(task) {
   return [...task.workLogs].sort((a, b) => b.date.localeCompare(a.date))[0] || null;
 }
 
-function upsertWorkLog(task, date, content, originalDate = '') {
+function upsertWorkLog(task, date, content, originalDate = '', metadata = {}) {
   if (originalDate) {
     const index = task.workLogs.findIndex(log => log.date === originalDate);
     if (index !== -1) {
       const duplicateIndex = task.workLogs.findIndex(log => log.date === date && log.date !== originalDate);
       if (content && duplicateIndex !== -1) {
-        task.workLogs[duplicateIndex] = { ...task.workLogs[duplicateIndex], content };
+        task.workLogs[duplicateIndex] = { ...task.workLogs[duplicateIndex], content, ...metadata };
         task.workLogs.splice(index, 1);
       } else if (content) {
-        task.workLogs[index] = { ...task.workLogs[index], date, content };
+        task.workLogs[index] = { ...task.workLogs[index], date, content, ...metadata };
       } else {
         task.workLogs.splice(index, 1);
       }
@@ -687,8 +659,8 @@ function upsertWorkLog(task, date, content, originalDate = '') {
   }
   if (!content) return;
   const existing = task.workLogs.find(log => log.date === date);
-  if (existing) existing.content = content;
-  else task.workLogs.push({ id: createId(), date, content });
+  if (existing) Object.assign(existing, { content, ...metadata });
+  else task.workLogs.push({ id: createId(), date, content, ...metadata });
   task.workLogs.sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -718,6 +690,7 @@ function loadWorkLog(date) {
   const task = tasks.find(item => item.id === elements.id.value);
   const log = task?.workLogs.find(item => item.date === date);
   if (!log) return;
+  document.querySelector('#task-log-kind').value = FishDeskModel.kind(log);
   elements.originalLogDate.value = date;
   elements.note.value = log.content;
   elements.workDate.value = date;
@@ -729,6 +702,7 @@ function loadWorkLog(date) {
 }
 
 function resetLogEditing() {
+  document.querySelector('#task-log-kind').value = 'progress';
   const task = tasks.find(item => item.id === elements.id.value);
   elements.originalLogDate.value = '';
   elements.note.value = '';
@@ -842,20 +816,15 @@ function emptyStateTemplate(status) {
   return `<div class="empty-state">${icons.inbox}<strong>${messages[status][0]}</strong><span>${messages[status][1]}</span></div>`;
 }
 
-function isArchived(task) {
-  if (task.status !== 'done' || !task.completedAt) return false;
-  const completed = new Date(task.completedAt).getTime();
-  return Number.isFinite(completed) && Date.now() - completed >= ARCHIVE_AFTER_DAYS * 86400000;
-}
 
 function renderProjectFilter() {
-  const projects = [...new Set(tasks.map(task => task.project))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
-  const activeProjects = [...new Set(tasks.filter(task => !isArchived(task)).map(task => task.project))].sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  const names = FishDeskModel.projectsFor(tasks, projects).map(project => project.name).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  const activeProjects = names;
   if (selectedProject !== 'all' && !activeProjects.includes(selectedProject)) selectedProject = 'all';
   elements.projectFilter.innerHTML = '<option value="all">全部项目</option>' + activeProjects.map(project =>
     `<option value="${escapeHTML(project)}"${project === selectedProject ? ' selected' : ''}>${escapeHTML(project)}</option>`
   ).join('');
-  document.querySelector('#project-suggestions').innerHTML = projects.map(project => `<option value="${escapeHTML(project)}"></option>`).join('');
+  document.querySelector('#project-suggestions').innerHTML = names.map(project => `<option value="${escapeHTML(project)}"></option>`).join('');
 }
 
 function render({ animate = false } = {}) {
@@ -865,22 +834,19 @@ function render({ animate = false } = {}) {
   }
 
   renderProjectFilter();
-  const activeTasks = tasks.filter(task => !isArchived(task));
+  renderProjects();
+  const activeTasks = tasks;
   const visibleTasks = selectedProject === 'all' ? activeTasks : activeTasks.filter(task => task.project === selectedProject);
   STATUSES.forEach(status => {
     const list = document.querySelector(`.task-list[data-status="${status}"]`);
     let filtered = visibleTasks.filter(task => task.status === status);
     if (status === 'done') {
       filtered = filtered.sort((a, b) => String(b.completedAt || '').localeCompare(String(a.completedAt || '')));
+      renderCompletedTasks(list, filtered);
+      document.querySelector(`[data-count="${status}"]`).textContent = filtered.length;
+      return;
     }
-    const collapsedCount = status === 'done' && !doneExpanded
-      ? Math.max(0, filtered.length - DONE_PREVIEW)
-      : 0;
-    const shown = collapsedCount ? filtered.slice(0, DONE_PREVIEW) : filtered;
-    const toggle = status === 'done' && filtered.length > DONE_PREVIEW
-      ? `<button class="done-toggle" type="button" data-action="toggle-done" aria-expanded="${doneExpanded}">${doneExpanded ? '收起已完成历史' : `查看其余 ${filtered.length - DONE_PREVIEW} 项已完成`}${icons.chevron}</button>`
-      : '';
-    list.innerHTML = shown.length ? shown.map(taskCardTemplate).join('') + toggle : emptyStateTemplate(status);
+    list.innerHTML = filtered.length ? filtered.map(taskCardTemplate).join('') : emptyStateTemplate(status);
     document.querySelector(`[data-count="${status}"]`).textContent = filtered.length;
   });
   updateOverview();
@@ -909,7 +875,7 @@ function render({ animate = false } = {}) {
 function updateOverview() {
   const todayEntries = getReportEntries('day', dateStamp());
   const weekEntries = getReportEntries('week', dateStamp());
-  document.querySelector('#total-count').textContent = tasks.length;
+  document.querySelector('#total-count').textContent = projects.filter(project => project.status !== 'completed').length;
   document.querySelector('#remaining-count').textContent = tasks.filter(task => task.status !== 'done').length;
   document.querySelector('#today-log-count').textContent = todayEntries.length;
   document.querySelector('#today-project-count').textContent = new Set(todayEntries.map(entry => entry.task.project)).size;
@@ -928,6 +894,7 @@ function openTaskDialog(status = 'todo', task = null, newLog = false) {
   elements.module.value = task ? task.module : '';
   elements.title.value = task ? task.title : '';
   elements.note.value = latestLog ? latestLog.content : '';
+  document.querySelector('#task-log-kind').value = latestLog ? FishDeskModel.kind(latestLog) : (status === 'done' ? 'completed' : 'progress');
   elements.workDate.value = latestLog ? latestLog.date : dateStamp();
   elements.nextStep.value = task ? task.nextStep : '';
   elements.issue.value = task ? task.issue : '';
@@ -982,7 +949,7 @@ function handleFormSubmit(event) {
   const editingTask = tasks.find(item => item.id === editingId);
   const originalDate = elements.originalLogDate.value;
   const hasOtherResult = editingTask?.workLogs.some(log => log.date !== originalDate && log.content.trim()) || false;
-  if (status === 'done' && !content && !hasOtherResult) {
+  if (status === 'done' && !content && (!hasOtherResult || editingTask?.status !== 'done')) {
     elements.note.classList.add('is-invalid');
     document.querySelector('#note-error').classList.add('is-visible');
     elements.note.focus();
@@ -993,6 +960,8 @@ function handleFormSubmit(event) {
   if (editingId) {
     const task = tasks.find(item => item.id === editingId);
     if (task) {
+      const originalLog = task.workLogs.find(log => log.date === originalDate);
+      const currentChanged = task.status !== status || task.nextStep !== elements.nextStep.value.trim() || task.issue !== elements.issue.value.trim();
       Object.assign(task, {
         project,
         module: elements.module.value.trim() || '通用',
@@ -1000,8 +969,12 @@ function handleFormSubmit(event) {
         nextStep: elements.nextStep.value.trim(),
         issue: elements.issue.value.trim()
       });
-      setTaskStatus(task, status);
-      upsertWorkLog(task, workDate, content, elements.originalLogDate.value);
+      setTaskStatus(task, status, originalDate ? dateStamp() : workDate);
+      const kind = document.querySelector('#task-log-kind').value;
+      const snapshot = originalLog ? originalLog.snapshot : { status, nextStep: task.nextStep, issue: task.issue };
+      upsertWorkLog(task, workDate, content, originalDate, { kind, ...(snapshot ? { snapshot } : {}) });
+      if (currentChanged || !originalDate) recordTaskSnapshot(task, originalDate ? dateStamp() : workDate);
+      if (status === 'done' && kind === 'completed' && (!task.completedOn || task.completedOn === originalDate)) task.completedOn = workDate;
       task.updatedAt = now;
     }
   } else {
@@ -1016,9 +989,12 @@ function handleFormSubmit(event) {
       createdAt: now,
       updatedAt: now,
       completedAt: status === 'done' ? now : null,
+      completedOn: status === 'done' ? workDate : '',
+      statusHistory: [],
       workLogs: []
     };
-    upsertWorkLog(task, workDate, content);
+    upsertWorkLog(task, workDate, content, '', { kind: document.querySelector('#task-log-kind').value, snapshot: { status, nextStep: task.nextStep, issue: task.issue } });
+    recordTaskSnapshot(task, workDate);
     tasks.push(task);
   }
 
@@ -1029,8 +1005,9 @@ function handleFormSubmit(event) {
 }
 
 function requestCompletionResult(task) {
-  openTaskDialog(task.status, task);
+  openTaskDialog(task.status, task, true);
   elements.form.querySelector('input[name="status"][value="done"]').checked = true;
+  document.querySelector('#task-log-kind').value = 'completed';
   showToast('请先填写实际结果再闭环');
   requestAnimationFrame(() => elements.note.focus());
 }
@@ -1044,11 +1021,6 @@ function handleBoardClick(event) {
   const addButton = event.target.closest('.add-to-column');
   if (addButton) {
     openTaskDialog(addButton.dataset.status);
-    return;
-  }
-  if (event.target.closest('[data-action="toggle-done"]')) {
-    doneExpanded = !doneExpanded;
-    render();
     return;
   }
   const actionButton = event.target.closest('[data-action]');
@@ -1080,14 +1052,14 @@ function handleBoardClick(event) {
     openTaskDialog(task.status, task, true);
   } else if (action === 'check') {
     const targetStatus = task.status === 'done' ? 'todo' : 'done';
-    if (targetStatus === 'done' && !task.workLogs.length) {
+    if (targetStatus === 'done') {
       requestCompletionResult(task);
     } else {
       setTaskStatus(task, targetStatus);
       saveAndRefresh(task.status === 'done' ? '工作项已闭环' : '工作项已移回待办');
     }
   } else if (action === 'move') {
-    if (actionButton.dataset.target === 'done' && !task.workLogs.length) {
+    if (actionButton.dataset.target === 'done') {
       requestCompletionResult(task);
     } else {
       setTaskStatus(task, actionButton.dataset.target);
@@ -1193,7 +1165,7 @@ function handleDrop(event) {
   const targetId = afterElement ? afterElement.dataset.id : null;
   const task = tasks.find(item => item.id === id);
   if (!task) return;
-  if (list.dataset.status === 'done' && task.status !== 'done' && !task.workLogs.length) {
+  if (list.dataset.status === 'done' && task.status !== 'done') {
     draggedId = null;
     cleanupDrag();
     render();
@@ -1281,17 +1253,9 @@ function getReportEntries(type, referenceStamp = activeReportDate) {
 }
 
 function getReportData() {
-  const entries = getReportEntries(activeReportType);
-  const followUps = tasks.filter(task => task.nextStep && task.status !== 'done');
-  const risks = tasks.filter(task => task.issue && task.status !== 'done');
-  return {
-    entries,
-    followUps,
-    risks,
-    projectCount: new Set(entries.map(entry => entry.task.project)).size,
-    title: formatReportTitle(),
-    period: getReportPeriod(activeReportType)
-  };
+  const period = getReportPeriod(activeReportType);
+  const data = FishDeskModel.report(tasks, period.startStamp, period.endStamp, dateStamp(), projects);
+  return { ...data, projectCount: data.projectNames.length, title: formatReportTitle(), period };
 }
 
 function formatReportTitle() {
@@ -1361,34 +1325,29 @@ function reportTaskGroupsHTML(entries) {
     </li>`).join('')}</ul>`;
 }
 
-function followUpHTML(data) {
-  let html = '';
-  if (data.followUps.length) {
-    html += `<section class="report-section"><h4>后续跟进（截至今日）</h4><ul class="engineering-report-list">${data.followUps.map(task =>
-      `<li><strong>${escapeHTML(task.project)}｜${escapeHTML(task.title)}</strong><p>${escapeHTML(task.nextStep)}</p></li>`
-    ).join('')}</ul></section>`;
-  }
-  if (data.risks.length) {
-    html += `<section class="report-section report-section--risk"><h4>问题与风险（截至今日）</h4><ul class="engineering-report-list">${data.risks.map(task =>
-      `<li><strong>${escapeHTML(task.project)}｜${escapeHTML(task.title)}</strong><p>${escapeHTML(task.issue)}</p></li>`
-    ).join('')}</ul></section>`;
-  }
-  return html;
+
+function reportProjectSections(data, project) {
+  return [
+    ['本期已完成', data.completed.filter(entry => entry.task.project === project)],
+    ['本期推进', data.progress.filter(entry => entry.task.project === project)],
+    ['未分类历史记录', data.unknown.filter(entry => entry.task.project === project)]
+  ];
 }
 
 function buildReportHTML(data) {
-  const meta = REPORT_META[activeReportType];
-  let html = `<section class="report-section"><h4>${meta.section}</h4>`;
-  if (!data.entries.length) {
-    html += '<p class="report-empty">该周期没有已保存的工作记录，不会自动生成内容。</p></section>';
-  } else if (activeReportType === 'day') {
-    html += `${reportEntriesHTML(data.entries)}</section>`;
-  } else {
-    html += '</section>' + groupEntriesByProject(data.entries).map(([project, entries], index) => `
-      <section class="report-project"><h5>${chineseOrdinal(index)}、${escapeHTML(project)}</h5>${reportTaskGroupsHTML(entries)}</section>`
-    ).join('');
-  }
-  return html + followUpHTML(data);
+  if (!data.entries.length && !data.projectCompletions.length) return '<p class="report-empty">该周期没有已保存的工作记录，不会自动生成内容。</p>';
+  const cutoff = data.period.endStamp < dateStamp() ? data.period.endStamp : dateStamp();
+  const html = data.projectNames.map(project => {
+    const sections = reportProjectSections(data, project).filter(([label, entries]) => entries.length || label !== '未分类历史记录');
+    const followUps = data.followUps.filter(task => task.project === project);
+    const risks = data.risks.filter(task => task.project === project);
+    const finished = data.projectCompletions.filter(item => item.name === project);
+    return `<section class="report-project"><h4>${escapeHTML(project)}</h4>${finished.map(item => `<p class="report-project-finished">项目结束：${escapeHTML(item.eventDate)}（由用户明确标记）</p>`).join('')}${sections.map(([label, entries]) =>
+      `<section class="report-section"><h5>${label}</h5>${entries.length ? reportTaskGroupsHTML(entries) : '<p class="report-empty">本期无此类记录。</p>'}</section>`).join('')}
+      ${followUps.length ? `<section class="report-section"><h5>后续计划（截至 ${cutoff}）</h5><ul>${followUps.map(task => `<li>${escapeHTML(task.title)}：${escapeHTML(task.nextStep)}</li>`).join('')}</ul></section>` : ''}
+      ${risks.length ? `<section class="report-section report-section--risk"><h5>问题与风险（截至 ${cutoff}）</h5><ul>${risks.map(task => `<li>${escapeHTML(task.title)}：${escapeHTML(task.issue)}</li>`).join('')}</ul></section>` : ''}</section>`;
+  }).join('');
+  return html + (data.unknown.length ? '<p class="report-history-note">未分类记录缺少当时的状态，未自动计入完成成果；可在原记录中补充分类。历史计划与问题仅显示当时已保存的快照。</p>' : '');
 }
 
 function renderReport() {
@@ -1402,7 +1361,7 @@ function renderReport() {
   elements.reportDate.value = activeReportDate;
   document.querySelector('#report-kind').textContent = REPORT_META[activeReportType].kind;
   document.querySelector('#report-document-title').textContent = data.title;
-  document.querySelector('#report-summary').textContent = `${data.entries.length} 项工作记录 · ${data.projectCount} 个项目${data.risks.length ? ` · ${data.risks.length} 项风险` : ''}`;
+  document.querySelector('#report-summary').textContent = `${data.projectCount} 个项目 · 完成成果 ${data.completed.length} 条 · 推进 ${data.progress.length} 条 · 未分类 ${data.unknown.length} 条`;
   const polished = isPolishedReportActive();
   elements.reportPolishBanner.hidden = !polished;
   document.querySelector('#report-content').innerHTML = polished
@@ -1417,67 +1376,41 @@ function markdownText(value) {
 
 function buildReportMarkdown(data = getReportData()) {
   const meta = REPORT_META[activeReportType];
-  const lines = [`# ${meta.kind} · ${data.title}`, '', `## ${meta.section}`, ''];
-  if (!data.entries.length) {
-    lines.push('该周期没有已保存的工作记录。');
-  } else if (activeReportType === 'day') {
-    data.entries.forEach(entry => lines.push(`- ${entryLabel(entry)}：${markdownText(entry.log.content)}`));
-  } else {
-    groupEntriesByProject(data.entries).forEach(([project, entries], index) => {
-      lines.push(`### ${chineseOrdinal(index)}、${project}`, '');
+  const lines = [`# ${meta.kind} · ${data.title}`, '', `${data.projectCount} 个项目 · 完成成果 ${data.completed.length} 条 · 推进 ${data.progress.length} 条 · 未分类 ${data.unknown.length} 条`, ''];
+  if (!data.entries.length && !data.projectCompletions.length) lines.push('该周期没有已保存的工作记录。');
+  const cutoff = data.period.endStamp < dateStamp() ? data.period.endStamp : dateStamp();
+  data.projectNames.forEach(project => {
+    lines.push(`## ${markdownText(project)}`, '');
+    data.projectCompletions.filter(item => item.name === project).forEach(item => lines.push(`项目结束：${item.eventDate}（由用户明确标记）`, ''));
+    reportProjectSections(data, project).forEach(([label, entries]) => {
+      if (!entries.length && label === '未分类历史记录') return;
+      lines.push(`### ${label}`, '');
+      if (!entries.length) lines.push('本期无此类记录。');
       groupEntriesByTask(entries).forEach(group => {
-        if (group.logs.length === 1) {
-          lines.push(`- ${taskLabel(group.task, true)}：${markdownText(group.logs[0].content)}`);
-        } else {
-          lines.push(`- ${taskLabel(group.task, true)}`);
-          group.logs.forEach(log => lines.push(`  - ${formatShortDate(log.date)}：${markdownText(log.content)}`));
-        }
+        lines.push(`- ${markdownText(taskLabel(group.task, true))}`);
+        group.logs.forEach(log => lines.push(`  - ${log.date}：${markdownText(log.content)}`));
       });
       lines.push('');
     });
-  }
-  if (data.followUps.length) {
-    lines.push('', '## 后续跟进（截至今日）', '');
-    data.followUps.forEach(task => lines.push(`- ${task.project}｜${task.title}：${markdownText(task.nextStep)}`));
-  }
-  if (data.risks.length) {
-    lines.push('', '## 问题与风险（截至今日）', '');
-    data.risks.forEach(task => lines.push(`- ${task.project}｜${task.title}：${markdownText(task.issue)}`));
-  }
+    const followUps = data.followUps.filter(task => task.project === project);
+    const risks = data.risks.filter(task => task.project === project);
+    if (followUps.length) {
+      lines.push(`### 后续计划（截至 ${cutoff}）`, '');
+      followUps.forEach(task => lines.push(`- ${markdownText(task.title)}：${markdownText(task.nextStep)}`));
+      lines.push('');
+    }
+    if (risks.length) {
+      lines.push(`### 问题与风险（截至 ${cutoff}）`, '');
+      risks.forEach(task => lines.push(`- ${markdownText(task.title)}：${markdownText(task.issue)}`));
+      lines.push('');
+    }
+  });
+  if (data.unknown.length) lines.push('注：未分类历史记录不计入完成成果；历史计划和问题仅使用当时已保存的快照。');
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function buildReportText(data = getReportData()) {
-  const meta = REPORT_META[activeReportType];
-  const summary = `${data.entries.length} 项工作记录 · ${data.projectCount} 个项目${data.risks.length ? ` · ${data.risks.length} 项风险` : ''}`;
-  const lines = [meta.kind, data.title, summary, '', `【${meta.section}】`];
-  if (!data.entries.length) {
-    lines.push('该周期没有已保存的工作记录。');
-  } else if (activeReportType === 'day') {
-    data.entries.forEach(entry => lines.push(`· ${entryLabel(entry)}：${markdownText(entry.log.content)}`));
-  } else {
-    groupEntriesByProject(data.entries).forEach(([project, entries], index) => {
-      lines.push(`${chineseOrdinal(index)}、${project}`);
-      groupEntriesByTask(entries).forEach(group => {
-        if (group.logs.length === 1) {
-          lines.push(`· ${taskLabel(group.task, true)}：${markdownText(group.logs[0].content)}`);
-        } else {
-          lines.push(`· ${taskLabel(group.task, true)}`);
-          group.logs.forEach(log => lines.push(`    ${formatShortDate(log.date)} ${markdownText(log.content)}`));
-        }
-      });
-      lines.push('');
-    });
-  }
-  if (data.followUps.length) {
-    lines.push('', '【后续跟进（截至今日）】');
-    data.followUps.forEach(task => lines.push(`· ${task.project}｜${task.title}：${markdownText(task.nextStep)}`));
-  }
-  if (data.risks.length) {
-    lines.push('', '【问题与风险（截至今日）】');
-    data.risks.forEach(task => lines.push(`· ${task.project}｜${task.title}：${markdownText(task.issue)}`));
-  }
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return buildReportMarkdown(data).replace(/^#{1,6} /gm, '').replace(/^  - /gm, '    · ').replace(/^- /gm, '· ');
 }
 
 function downloadReport() {
@@ -1696,10 +1629,10 @@ function filteredArchived() {
   const start = elements.archiveStart.value;
   const end = elements.archiveEnd.value;
   return tasks
-    .filter(isArchived)
+    .filter(task => task.status === 'done')
     .filter(task => project === 'all' || task.project === project)
     .filter(task => {
-      const completed = dateStamp(new Date(task.completedAt));
+      const completed = task.completedOn || dateStamp(new Date(task.completedAt));
       if (start && completed < start) return false;
       if (end && completed > end) return false;
       return true;
@@ -1718,12 +1651,12 @@ function renderArchive() {
       || elements.archiveEnd.value;
     elements.archiveList.innerHTML = `<p class="records-empty">${filtered
       ? '没有符合条件的归档工作项，可以换个关键词、项目或日期范围试试。'
-      : `暂无归档。工作项标记完成满 ${ARCHIVE_AFTER_DAYS} 天后会自动移出看板、收进这里。`}</p>`;
+      : '还没有已完成任务。完成后会保留在所属项目中，并按完成日期整理。'}</p>`;
     return;
   }
   const months = new Map();
   archived.forEach(task => {
-    const date = new Date(task.completedAt);
+    const date = parseDateStamp(task.completedOn || dateStamp(new Date(task.completedAt)));
     const key = `${date.getFullYear()}年${date.getMonth() + 1}月`;
     if (!months.has(key)) months.set(key, []);
     months.get(key).push(task);
@@ -1734,7 +1667,7 @@ function renderArchive() {
       <ul class="archive-month__list">${list.map(task => `
         <li><button class="archive-item" type="button" data-archive-task="${escapeHTML(task.id)}">
           <strong>${escapeHTML(taskLabel(task, true))}</strong>
-          <span>${escapeHTML(task.project)} · ${formatShortDate(dateStamp(new Date(task.completedAt)))}完成 · ${task.workLogs.length} 条记录</span>
+          <span>${escapeHTML(task.project)} · ${formatShortDate(task.completedOn || dateStamp(new Date(task.completedAt)))}完成 · ${task.workLogs.length} 条记录</span>
         </button></li>`).join('')}
       </ul>
     </details>`).join('');
@@ -1785,7 +1718,7 @@ function renderLogs() {
 
 function renderBackup() {
   const logCount = tasks.reduce((sum, task) => sum + task.workLogs.length, 0);
-  const archivedCount = tasks.filter(isArchived).length;
+  const archivedCount = tasks.filter(task => task.status === 'done').length;
   elements.backupStat.textContent = `当前共 ${tasks.length} 个工作项 · ${logCount} 条工作记录${archivedCount ? ` · ${archivedCount} 项已归档` : ''}`;
 }
 
@@ -1829,7 +1762,7 @@ function syncModalClass() {
 }
 
 function exportData() {
-  const payload = { app: 'FishDesk', version: 1, exportedAt: new Date().toISOString(), rev: serverRev, tasks };
+  const payload = { app: 'FishDesk', version: 2, exportedAt: new Date().toISOString(), rev: serverRev, tasks, projects };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -1855,7 +1788,7 @@ async function importDataFile(file) {
     return;
   }
   const imported = normalizeTaskList(rawTasks);
-  if (!imported.length) {
+  if (!imported.length && !(Array.isArray(parsed.projects) && parsed.projects.length)) {
     showToast('备份文件中没有可导入的工作项');
     return;
   }
@@ -1864,10 +1797,13 @@ async function importDataFile(file) {
   if (!confirmed) return;
   try {
     const latest = await apiRequest('/api/tasks');
-    const result = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: latest.rev, tasks: imported } });
+    const importedProjects = FishDeskModel.projectsFor(imported, Array.isArray(parsed.projects) ? parsed.projects : []);
+    const result = await apiRequest('/api/tasks', { method: 'PUT', body: { baseRev: latest.rev, tasks: imported, projects: importedProjects } });
     tasks = imported;
     serverRev = result.rev;
-    lastSyncedTasks = imported.map(task => ({ ...task, workLogs: task.workLogs.map(log => ({ ...log })) }));
+    lastSyncedTasks = JSON.parse(JSON.stringify(imported));
+    projects = importedProjects;
+    lastSyncedProjects = JSON.parse(JSON.stringify(projects));
     cacheTasks();
     setSyncStatus('已同步到服务器');
     render({ animate: true });
@@ -2001,9 +1937,11 @@ async function saveChangesBeforeUpdate() {
     saveTimer = null;
   }
   await waitForCurrentSave();
-  if (!lastSyncedTasks || JSON.stringify(tasks) !== JSON.stringify(lastSyncedTasks)) await flushSave();
+  if (!lastSyncedTasks || JSON.stringify(tasks) !== JSON.stringify(lastSyncedTasks)
+      || JSON.stringify(projects) !== JSON.stringify(lastSyncedProjects)) await flushSave();
   await waitForCurrentSave();
-  if (!lastSyncedTasks || JSON.stringify(tasks) !== JSON.stringify(lastSyncedTasks) || saving) {
+  if (!lastSyncedTasks || JSON.stringify(tasks) !== JSON.stringify(lastSyncedTasks)
+      || JSON.stringify(projects) !== JSON.stringify(lastSyncedProjects) || saving) {
     throw new Error('工作记录尚未同步，已保留在本机。请检查网络后再升级。');
   }
 }
@@ -2307,6 +2245,9 @@ elements.logPolishCancel.addEventListener('click', closeLogPolishPanel);
 elements.logPolishClose.addEventListener('click', closeLogPolishPanel);
 elements.logPolishUndoButton.addEventListener('click', undoLogPolish);
 elements.form.addEventListener('submit', handleFormSubmit);
+elements.form.querySelectorAll('input[name="status"]').forEach(input => input.addEventListener('change', () => {
+  if (!elements.originalLogDate.value) document.querySelector('#task-log-kind').value = input.value === 'done' ? 'completed' : 'progress';
+}));
 elements.title.addEventListener('input', clearFormErrors);
 elements.note.addEventListener('input', clearFormErrors);
 elements.dialog.addEventListener('close', syncModalClass);

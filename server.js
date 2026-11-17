@@ -6,6 +6,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { isIP } = require('node:net');
+const Model = require('./model');
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -57,7 +58,10 @@ const STATIC_FILES = new Map([
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/styles.css', 'styles.css'],
-  ['/app.js', 'app.js']
+  ['/app.js', 'app.js'],
+  ['/model.js', 'model.js'],
+  ['/projects.js', 'projects.js'],
+  ['/projects.css', 'projects.css']
 ]);
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -376,20 +380,22 @@ async function getStore() {
     try {
       const raw = await fsp.readFile(DATA_FILE, 'utf8');
       const parsed = JSON.parse(raw);
-      if (!parsed || !Number.isInteger(parsed.rev) || parsed.rev < 0 || !validateTasks(parsed.tasks)) {
+      if (!parsed || !Number.isInteger(parsed.rev) || parsed.rev < 0 || !validateTasks(parsed.tasks)
+          || (parsed.projects !== undefined && !validateProjects(parsed.projects))) {
         throw new Error('工作数据结构不合法');
       }
       store = {
         rev: Number.isInteger(parsed.rev) ? parsed.rev : 0,
         updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
-        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : []
+        tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [],
+        projects: Model.projectsFor(parsed.tasks, parsed.projects || [])
       };
     } catch (error) {
       if (error.code !== 'ENOENT') {
         console.error('[fishdesk] 数据文件读取失败，已禁止覆盖原文件：', error.message);
         throw httpError(503, '工作数据读取失败，已保留原文件，请检查或恢复备份');
       }
-      store = { rev: 0, updatedAt: null, tasks: [] };
+      store = { rev: 0, updatedAt: null, tasks: [], projects: [] };
     }
     return store;
   })();
@@ -400,12 +406,13 @@ async function getStore() {
   }
 }
 
-function persist(tasks, baseRev) {
+function persist(tasks, baseRev, projects) {
   const tmpFile = `${DATA_FILE}.${process.pid}.tmp`;
   const operation = writeChain.then(async () => {
     const current = await getStore();
     if (baseRev !== current.rev) return { conflict: current };
-    const next = { tasks, rev: current.rev + 1, updatedAt: new Date().toISOString() };
+    const compatibleTasks = preserveHistoryForOlderClients(tasks, current.tasks);
+    const next = { tasks: compatibleTasks, projects: Model.projectsFor(compatibleTasks, projects === undefined ? current.projects : projects), rev: current.rev + 1, updatedAt: new Date().toISOString() };
     const snapshot = `${JSON.stringify(next)}\n`;
     try {
       await fsp.writeFile(tmpFile, snapshot, 'utf8');
@@ -422,6 +429,32 @@ function persist(tasks, baseRev) {
   return operation;
 }
 
+function preserveHistoryForOlderClients(incoming, previous) {
+  const oldTasks = new Map(previous.map(task => [task.id, task]));
+  return incoming.map(item => {
+    const old = oldTasks.get(item.id);
+    if (!old) return item;
+    const result = { ...item };
+    if (item.statusHistory === undefined && old.statusHistory) {
+      result.statusHistory = [...old.statusHistory];
+      if (item.status !== old.status || item.nextStep !== old.nextStep || item.issue !== old.issue) {
+        result.statusHistory.push({ date: Model.day(new Date().toISOString()), status: item.status,
+          nextStep: item.nextStep || '', issue: item.issue || '', recordedAt: new Date().toISOString() });
+      }
+    }
+    if (item.completedOn === undefined && old.completedOn !== undefined) {
+      result.completedOn = item.status === old.status ? old.completedOn : item.status === 'done' ? Model.day(item.completedAt) : '';
+    }
+    result.workLogs = item.workLogs.map(log => {
+      const previousLog = old.workLogs.find(value => value.id === log.id || value.date === log.date);
+      if (!previousLog) return log;
+      return { ...log, ...(log.kind === undefined && previousLog.kind !== undefined ? { kind: previousLog.kind } : {}),
+        ...(log.snapshot === undefined && previousLog.snapshot ? { snapshot: previousLog.snapshot } : {}) };
+    });
+    return result;
+  });
+}
+
 function validateTasks(value) {
   if (!Array.isArray(value) || value.length > MAX_TASKS) return null;
   const seen = new Set();
@@ -432,10 +465,28 @@ function validateTasks(value) {
     if (typeof item.title !== 'string' || !item.title) return null;
     if (!STATUSES.has(item.status)) return null;
     if (!Array.isArray(item.workLogs)) return null;
+    if (item.workLogs.some(log => !log || typeof log.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(log.date)
+      || typeof log.content !== 'string' || (log.kind !== undefined && !['progress', 'completed', 'unknown'].includes(log.kind)))) return null;
+    if (item.statusHistory !== undefined && (!Array.isArray(item.statusHistory) || item.statusHistory.some(snapshot =>
+      !snapshot || typeof snapshot.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.date) || !STATUSES.has(snapshot.status)))) return null;
     seen.add(item.id);
     result.push(item);
   }
   return result;
+}
+
+function validateProjects(value) {
+  if (!Array.isArray(value) || value.length > MAX_TASKS) return null;
+  const ids = new Set(), names = new Set();
+  for (const item of value) {
+    if (!item || typeof item.id !== 'string' || !item.id || item.id.length > 500 || ids.has(item.id)
+        || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 40 || names.has(item.name)
+        || !['active', 'completed'].includes(item.status)
+        || (item.goal !== undefined && (typeof item.goal !== 'string' || item.goal.length > 600))
+        || (item.phase !== undefined && (typeof item.phase !== 'string' || item.phase.length > 100))) return null;
+    ids.add(item.id); names.add(item.name);
+  }
+  return value;
 }
 
 function sendJSON(res, status, payload) {
@@ -767,7 +818,7 @@ async function handleChangePassword(req, res) {
 
 async function handleGetTasks(res) {
   const current = await getStore();
-  sendJSON(res, 200, { rev: current.rev, updatedAt: current.updatedAt, tasks: current.tasks });
+  sendJSON(res, 200, { rev: current.rev, updatedAt: current.updatedAt, tasks: current.tasks, projects: current.projects });
 }
 
 async function handlePutTasks(req, res) {
@@ -791,11 +842,15 @@ async function handlePutTasks(req, res) {
     sendJSON(res, 400, { error: '工作项数据不合法' });
     return;
   }
+  if (body.projects !== undefined && !validateProjects(body.projects)) {
+    sendJSON(res, 400, { error: '项目数据不合法' });
+    return;
+  }
   const baseRev = Number.isInteger(body.baseRev) ? body.baseRev : -1;
-  const result = await persist(incoming, baseRev);
+  const result = await persist(incoming, baseRev, body.projects);
   if (result.conflict) {
     const current = result.conflict;
-    sendJSON(res, 409, { rev: current.rev, updatedAt: current.updatedAt, tasks: current.tasks });
+    sendJSON(res, 409, { rev: current.rev, updatedAt: current.updatedAt, tasks: current.tasks, projects: current.projects });
     return;
   }
   const current = result.saved;

@@ -53,7 +53,7 @@ test('损坏或结构异常的数据文件不可读写，健康检查失败且�
       const restored = { rev: 5, updatedAt: null, tasks: [] };
       await fs.writeFile(path.join(server.dataDir, 'daylight.json'), JSON.stringify(restored));
       assert.equal((await server.request('/healthz')).status, 200);
-      assert.deepEqual(await (await server.request('/api/tasks', { headers: { Cookie: cookie } })).json(), restored);
+      assert.deepEqual(await (await server.request('/api/tasks', { headers: { Cookie: cookie } })).json(), { ...restored, projects: [] });
     });
   }
 });

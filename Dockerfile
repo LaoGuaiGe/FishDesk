@@ -6,8 +6,8 @@ ENV NODE_ENV=production \
     PORT=8080 \
     DATA_DIR=/data
 
-COPY package.json server.js ./
-COPY index.html styles.css app.js login.html ./
+COPY package.json server.js model.js ./
+COPY index.html styles.css projects.css app.js projects.js login.html ./
 
 RUN mkdir -p /data
 

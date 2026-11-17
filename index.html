@@ -17,6 +17,7 @@
   <title>FishDesk — 嵌入式研发工作台</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23171a17'/%3E%3Ccircle cx='11' cy='11' r='3.4' fill='%23fff'/%3E%3Ccircle cx='21' cy='11' r='3.4' fill='%23fff'/%3E%3Ccircle cx='11' cy='21' r='3.4' fill='%23fff'/%3E%3Ccircle cx='21' cy='21' r='3.4' fill='%23dfff4f'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="projects.css">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到项目看板</a>
@@ -43,7 +44,8 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg>
           <span>工作报告</span>
         </button>
-        <button class="button button--primary" id="new-task-button" type="button">
+        <button class="button button--primary" id="new-project-button" type="button">新建项目</button>
+        <button class="button button--secondary" id="new-task-button" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           新建工作项
         </button>
@@ -57,7 +59,7 @@
           <h1 id="greeting">早上好，<br><span>把问题逐项闭环。</span></h1>
           <p class="overview__caption">记录真实进展、验证结果和需要继续跟进的问题。</p>
           <div class="mini-metrics" aria-label="工作项概览">
-            <div><strong id="total-count">0</strong><span>工作项</span></div>
+            <div><strong id="total-count">0</strong><span>推进中项目</span></div>
             <span class="mini-metrics__divider" aria-hidden="true"></span>
             <div><strong id="remaining-count">0</strong><span>待闭环</span></div>
           </div>
@@ -78,7 +80,7 @@
 
       <section class="workspace reveal reveal--delayed" aria-labelledby="workspace-title">
         <div class="section-heading">
-          <div><p class="eyebrow">PROJECT EXECUTION</p><h2 id="workspace-title">项目执行看板</h2></div>
+          <div><p class="eyebrow">PROJECT WORKSPACE</p><h2 id="workspace-title">项目总览</h2></div>
           <div class="board-tools">
             <label class="project-filter-label" for="project-filter">项目</label>
             <select id="project-filter" class="project-filter" aria-label="按项目筛选工作项"><option value="all">全部项目</option></select>
@@ -89,7 +91,16 @@
           </div>
         </div>
 
-        <div class="board" id="board">
+        <section id="project-home" aria-label="项目总览">
+          <div class="project-toolbar"><div class="project-view-tabs" role="group" aria-label="项目范围"><button type="button" data-project-view="active" aria-pressed="true">推进中的项目</button><button type="button" data-project-view="completed" aria-pressed="false">已结束项目</button><button type="button" data-project-view="all" aria-pressed="false">全部项目</button></div><input id="project-search" type="search" aria-label="搜索项目" placeholder="搜索项目、目标或阶段"></div>
+          <div class="project-grid" id="project-grid"></div>
+        </section>
+        <section id="project-detail" hidden aria-label="项目详情">
+          <div class="project-detail-header"><button class="button button--secondary" id="project-back-button" type="button">← 全部项目</button><div><h3 id="project-detail-title"></h3><p id="project-detail-goal"></p><p class="project-phase" id="project-detail-phase"></p></div><div class="project-detail-actions"><button class="button button--secondary" id="project-edit-button" type="button">项目资料</button><button class="button button--secondary" id="project-complete-button" type="button">结束项目</button></div></div>
+          <div class="project-log-entry"><label for="project-log-task">登记进展</label><select id="project-log-task"><option value="">选择工作项</option></select><button class="button button--primary" id="project-log-button" type="button">记录今天的进展</button><button class="button button--secondary" id="project-add-task-button" type="button">添加工作项</button></div>
+          <div class="project-detail-tabs" role="group" aria-label="项目详情视图"><button type="button" data-project-tab="timeline" aria-pressed="true">连续进展</button><button type="button" data-project-tab="tasks" aria-pressed="false">工作项</button></div>
+          <section id="project-timeline-panel" aria-label="项目连续进展"><div class="project-timeline-controls"><label for="timeline-period">查看范围</label><select id="timeline-period"><option value="all">全部时间</option><option value="today">今天</option><option value="week">本周</option><option value="month">本月</option><option value="custom">自选日期</option></select><label>从<input type="date" id="timeline-start"></label><label>到<input type="date" id="timeline-end"></label></div><div id="project-timeline"></div></section>
+        <div class="board" id="board" hidden>
           <section class="task-column" data-status="todo" aria-labelledby="todo-title">
             <header class="column-header"><div class="column-header__title"><span class="column-index">01</span><h3 id="todo-title">待办</h3><span class="task-count" data-count="todo">0</span></div><button class="icon-button add-to-column" type="button" data-status="todo" aria-label="添加待办工作项"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
             <div class="task-list" id="todo-list" data-status="todo" aria-label="待办工作项列表"></div>
@@ -100,14 +111,22 @@
           </section>
           <section class="task-column" data-status="done" aria-labelledby="done-title">
             <header class="column-header"><div class="column-header__title"><span class="column-index">03</span><h3 id="done-title">已完成</h3><span class="task-count" data-count="done">0</span></div><button class="icon-button add-to-column" type="button" data-status="done" aria-label="添加已完成工作项"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
+            <div class="completed-controls"><select id="completed-period" aria-label="完成时间范围"><option value="all">全部完成时间</option><option value="today">今天完成</option><option value="week">本周完成</option><option value="month">本月完成</option></select><input id="completed-search" type="search" placeholder="搜索已完成任务" aria-label="搜索已完成任务"></div>
             <div class="task-list" id="done-list" data-status="done" aria-label="已完成工作项列表"></div>
           </section>
         </div>
+        </section>
       </section>
     </main>
 
     <footer class="footer"><span>FACTS, NOT FILLER.</span><span class="footer__status"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="footer__sync" id="sync-status" role="status" aria-live="polite">正在连接服务器…</span><button class="footer__logout" id="logout-button" type="button">退出登录</button></span></footer>
   </div>
+
+  <dialog class="task-dialog" id="project-dialog" aria-labelledby="project-dialog-title"><form id="project-form">
+    <div class="dialog-header"><div><p class="eyebrow">PROJECT</p><h2 id="project-dialog-title">新建项目</h2></div><button class="icon-button" id="project-dialog-close" type="button" aria-label="关闭项目资料">×</button></div>
+    <div class="form-body"><input type="hidden" id="project-id"><div class="form-field"><label for="project-name">项目名称</label><input id="project-name" maxlength="40" required placeholder="例如：机器鸭控制系统"><p class="field-hint">名称用于关联工作项，创建后保持不变。</p></div><div class="form-field"><label for="project-goal">项目目标</label><textarea id="project-goal" maxlength="600" rows="3" placeholder="这个项目最终要交付什么？"></textarea></div><div class="form-field"><label for="project-phase">当前阶段</label><input id="project-phase" maxlength="100" placeholder="例如：样机联调、硬件验证"></div></div>
+    <div class="dialog-actions"><button class="button button--secondary" id="project-dialog-cancel" type="button">取消</button><button class="button button--primary" type="submit">保存项目</button></div>
+  </form></dialog>
 
   <dialog class="task-dialog" id="task-dialog" aria-labelledby="dialog-title">
     <form id="task-form" novalidate>
@@ -129,6 +148,7 @@
           <span class="log-polish__note">内容会发送到外部 AI 服务，只改措辞</span>
         </div>
       </div>
+      <div class="form-field"><label for="task-log-kind">这条记录属于</label><select id="task-log-kind"><option value="progress">推进记录：有进展，尚未完成</option><option value="completed">完成成果：已有明确交付或验证结果</option><option value="unknown">未分类历史记录</option></select><p class="field-hint">按记录发生时的情况选择，之后完成任务不会改写过去的记录。</p></div>
       <section class="polish-panel polish-panel--inline" id="log-polish-panel" hidden aria-label="记录润色稿">
         <div class="polish-panel__head">
           <span class="polish-panel__title">AI 润色稿</span>
@@ -228,7 +248,7 @@
             <label>从<input type="date" id="archive-start" aria-label="归档完成起始日期"></label>
             <label>到<input type="date" id="archive-end" aria-label="归档完成结束日期"></label>
           </div>
-          <p class="records-hint">工作项标记完成满 7 天后自动移出看板、收进这里。归档只影响看板显示，日报、周报和月报的统计口径不变。</p>
+          <p class="records-hint">全部已完成任务都保留在所属项目中，也可在这里按日期和项目查找。项目是否结束单独标记。</p>
           <p class="records-count" id="archive-count-label"></p>
           <div id="archive-list"></div>
         </section>
@@ -340,6 +360,8 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"><span class="toast__indicator" aria-hidden="true"></span><span id="toast-message"></span><button id="undo-button" type="button" hidden>撤销</button></div>
   <noscript><p class="noscript">请启用 JavaScript，以使用项目管理和报告功能。</p></noscript>
+  <script src="model.js" defer></script>
+  <script src="projects.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>

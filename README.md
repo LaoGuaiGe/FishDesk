@@ -4,12 +4,24 @@
 
 数据现在保存在你自己的服务器上，多设备登录看到同一份数据；访问需要密码，登录后本设备在有效期内保持登录。
 
+## 项目与工作报告
+
+首页以项目为入口，显示目标、当前阶段、最近进展和待跟进事项。进入项目后，默认按日期查看连续进展，也可切到工作项看板。任务全部完成不会自动结束项目，项目结束需单独标记，也可重新开启。
+
+完成任务按今天和往期日期整理，可搜索或查看本周、本月的完成内容。记录进展时区分「推进记录」和「完成成果」；后续完成任务不会把过去的推进记录改成完成成果。
+
+日报、周报、月报均按项目分组，再区分本期已完成、本期推进和未分类历史记录。后续计划和风险使用对应时期已保存的快照；旧数据缺少的历史状态不会自动推断，可在原记录中补充分类。项目结束事件独立展示，不等同于任务完成。
+
+原有工作项会按项目名称形成项目入口，记录保留。新版导出也包含项目资料与历史信息，仍可导入旧版工作项备份。
+
 ## 组成
 
-- `index.html` / `styles.css` / `app.js`：工作台前端（三列看板 + 报告中心）
+- `index.html` / `styles.css` / `app.js`：工作台前端与报告中心
+- `projects.js` / `projects.css`：项目总览、连续进展与按日期整理的完成任务
+- `model.js`：项目归组、记录分类和历史报告取数规则
 - `login.html`：密码登录页
 - `server.js`：零依赖 Node 服务，负责鉴权、静态托管、数据读写
-- `data/daylight.json`：任务数据（Docker 中位于 `/data`）
+- `data/daylight.json`：项目资料、任务及历史记录（Docker 中位于 `/data`）
 - `data/session.secret`：登录 Cookie 签名密钥，首次启动自动生成
 - `data/auth.json`：访问密码哈希（首次用环境变量初始化，之后可在界面修改）
 - `data/config.json`：界面「设置」保存的 AI 配置、界面主题和登录有效期（首次保存时生成）
@@ -172,8 +184,8 @@ Docker 部署的 `.env` 还包含 `FISHDESK_IMAGE`，由安装和更新脚本维
 | POST | `/api/login` | `{"password":"..."}`，成功后下发 HttpOnly Cookie |
 | POST | `/api/logout` | 清除登录 Cookie |
 | GET | `/api/session` | 当前登录状态 |
-| GET | `/api/tasks` | 读取 `{rev, updatedAt, tasks}` |
-| PUT | `/api/tasks` | 全量写入 `{baseRev, tasks}`，版本不一致返回 409 |
+| GET | `/api/tasks` | 读取 `{rev, updatedAt, tasks, projects}` |
+| PUT | `/api/tasks` | 全量写入 `{baseRev, tasks, projects}`，版本不一致返回 409；旧客户端省略 projects 时保留项目资料 |
 | POST | `/api/password` | `{"currentPassword":"...","newPassword":"..."}`，修改访问密码 |
 | GET | `/api/ai-status` | 返回 `{enabled, model}`，控制润色入口显隐 |
 | GET | `/api/settings` | 返回 AI 配置（密钥脱敏）与登录有效期 |
