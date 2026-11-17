@@ -227,8 +227,10 @@ function signSession() {
 
 function verifySession(token) {
   if (typeof token !== 'string' || !token) return false;
-  const [payload, signature] = token.split('.');
-  if (!payload || !signature) return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const [payload, signature] = parts;
+  if (!payload || !/^[A-Za-z0-9_-]{43}$/.test(signature)) return false;
   const expected = hmac(payload);
   if (expected.length !== signature.length) return false;
   if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return false;
@@ -246,7 +248,11 @@ function parseCookies(header) {
   header.split(';').forEach(part => {
     const index = part.indexOf('=');
     if (index === -1) return;
-    result[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+    try {
+      result[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
+    } catch {
+      // Malformed cookie values are untrusted input, not server failures.
+    }
   });
   return result;
 }
@@ -1007,7 +1013,13 @@ async function serveFile(res, fileName, req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  } catch {
+    sendJSON(res, 400, { error: '请求地址格式错误' });
+    return;
+  }
   const pathname = url.pathname;
   try {
     if (pathname === '/healthz') {
