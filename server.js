@@ -313,6 +313,9 @@ async function getStore() {
     try {
       const raw = await fsp.readFile(DATA_FILE, 'utf8');
       const parsed = JSON.parse(raw);
+      if (!parsed || !Number.isInteger(parsed.rev) || parsed.rev < 0 || !validateTasks(parsed.tasks)) {
+        throw new Error('工作数据结构不合法');
+      }
       store = {
         rev: Number.isInteger(parsed.rev) ? parsed.rev : 0,
         updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : null,
@@ -320,13 +323,18 @@ async function getStore() {
       };
     } catch (error) {
       if (error.code !== 'ENOENT') {
-        console.warn('[fishdesk] 数据文件读取失败，将以空数据启动：', error.message);
+        console.error('[fishdesk] 数据文件读取失败，已禁止覆盖原文件：', error.message);
+        throw httpError(503, '工作数据读取失败，已保留原文件，请检查或恢复备份');
       }
       store = { rev: 0, updatedAt: null, tasks: [] };
     }
     return store;
   })();
-  return storePromise;
+  try {
+    return await storePromise;
+  } finally {
+    storePromise = null;
+  }
 }
 
 function persist() {
@@ -1169,7 +1177,7 @@ const server = http.createServer(async (req, res) => {
     await serveFile(res, fileName, req);
   } catch (error) {
     console.error('[fishdesk] 请求处理失败：', error);
-    if (!res.headersSent) sendJSON(res, 500, { error: '服务器内部错误' });
+    if (!res.headersSent) sendJSON(res, error.status || 500, { error: error.status ? error.message : '服务器内部错误' });
     else res.end();
   }
 });
