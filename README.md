@@ -13,6 +13,7 @@
 - `data/session.secret`：登录 Cookie 签名密钥，首次启动自动生成
 - `data/auth.json`：访问密码哈希（首次用环境变量初始化，之后可在界面修改）
 - `data/config.json`：界面「设置」保存的 AI 配置、界面主题和登录有效期（首次保存时生成）
+- `data/login-attempts.json`：登录失败次数，重启后仍保留未到期的限制
 
 ## 本机运行
 
@@ -71,6 +72,8 @@ proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 ```
 
+项目的 Docker Compose 已启用 `TRUST_PROXY=1`，按 Nginx 追加的最后一个来源地址分别限制登录。此模式只适用于应用端口仅由单层可信反向代理访问的部署；不要把 18080 端口开放到公网。直接运行 Node 时默认不信任代理头，经 Nginx 部署需显式启用此设置。
+
 4. 在宝塔 SSL 页面申请 Let's Encrypt 证书，并开启强制 HTTPS。
 5. 浏览器访问 `https://你的域名`，输入第 2 步设置的密码。
 
@@ -105,6 +108,7 @@ GitHub Actions 会构建 AMD64/ARM64 镜像并发布 `release.json`。首次发�
 | `PASSWORD` | 首次启动 | 访问密码，用于初始化 `data/auth.json`；之后改密码在界面里操作 |
 | `PORT` | 否 | 监听端口，默认 `8080` |
 | `DATA_DIR` | 否 | 数据目录，默认 `./data`；Docker 镜像内为 `/data` |
+| `TRUST_PROXY` | 否 | 默认关闭；设为 `1` 后信任单层反向代理的来源地址和 HTTPS 请求头，应用端口必须限制为仅可信代理可访问 |
 | `SESSION_DAYS` | 否 | 登录有效期（天）的初始默认值，默认 `30`；之后可在界面「设置」中修改 |
 | `SESSION_SECRET` | 否 | Cookie 签名密钥；不设置则自动生成并保存到 `DATA_DIR/session.secret` |
 | `AI_API_KEY` | 否 | 仅在从未在界面保存过密钥时作为默认值；推荐直接在界面「设置」里填写 |

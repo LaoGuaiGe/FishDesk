@@ -9,6 +9,7 @@ services:
       PASSWORD: ${FISHDESK_PASSWORD:?请先设置 FISHDESK_PASSWORD 环境变量}
       SESSION_DAYS: ${FISHDESK_SESSION_DAYS:-30}
       SESSION_SECRET: ${FISHDESK_SESSION_SECRET:-}
+      TRUST_PROXY: "1"
       AI_API_KEY: ${FISHDESK_AI_API_KEY:-}
       AI_BASE_URL: ${FISHDESK_AI_BASE_URL:-https://api.deepseek.com}
       AI_MODEL: ${FISHDESK_AI_MODEL:-deepseek-chat}

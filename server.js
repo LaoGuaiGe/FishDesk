@@ -9,6 +9,7 @@ const { isIP } = require('node:net');
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const DATA_FILE = path.join(DATA_DIR, 'daylight.json');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
@@ -265,8 +266,19 @@ function isAuthenticated(req) {
 
 function isSecureRequest(req) {
   if (req.socket && req.socket.encrypted) return true;
+  if (!TRUST_PROXY) return false;
   const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
   return proto === 'https';
+}
+
+function loginAddress(req) {
+  if (TRUST_PROXY && req.headers['x-forwarded-for']) {
+    // The single trusted edge proxy must append its peer address to this header.
+    const address = String(req.headers['x-forwarded-for']).split(',').pop().trim();
+    if (!isIP(address)) throw httpError(400, '来源地址格式错误');
+    return address.replace(/^::ffff:(?=\d+\.)/, '');
+  }
+  return (req.socket.remoteAddress || 'unknown').replace(/^::ffff:(?=\d+\.)/, '');
 }
 
 function sessionCookie(value, maxAgeSeconds, secure) {
@@ -678,7 +690,7 @@ async function handleLogin(req, res) {
     sendJSON(res, 415, { error: '需要 application/json 请求' });
     return;
   }
-  const ip = req.socket.remoteAddress || 'unknown';
+  const ip = loginAddress(req);
   if (rejectLimitedLogin(ip, res)) return;
   let body;
   try {

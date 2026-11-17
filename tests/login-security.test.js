@@ -50,3 +50,20 @@ test('损坏的登录限制文件不能静默清零', async t => {
   const server = await startServer(t, { files: { 'login-attempts.json': '{broken' } });
   assert.equal((await server.login()).status, 503);
 });
+
+test('明确启用反向代理后按真实来源分别限流，只取代理追加的最后一个地址', async t => {
+  const server = await startServer(t, { env: { TRUST_PROXY: '1' } });
+  for (let i = 0; i < 8; i++) {
+    assert.equal((await server.login('wrong', { 'X-Forwarded-For': `198.51.100.${i + 1}, 192.0.2.10` })).status, 401);
+  }
+  assert.equal((await server.login('wrong', { 'X-Forwarded-For': '192.0.2.10' })).status, 429);
+  assert.equal((await server.login('regression-test-password', { 'X-Forwarded-For': '192.0.2.11' })).status, 200);
+});
+
+test('未启用反向代理时不能用伪造请求头绕过限制或设置安全来源', async t => {
+  const server = await startServer(t);
+  for (let i = 0; i < 8; i++) {
+    assert.equal((await server.login('wrong', { 'X-Forwarded-For': `192.0.2.${i + 1}` })).status, 401);
+  }
+  assert.equal((await server.login('wrong', { 'X-Forwarded-For': '192.0.2.99' })).status, 429);
+});
