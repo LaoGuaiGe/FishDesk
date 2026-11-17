@@ -13,10 +13,10 @@ function renderActivityCalendar() {
   monthInput.value = activityMonth;
   monthInput.max = today.slice(0, 7);
   document.querySelector('#activity-next').disabled = activityMonth >= today.slice(0, 7);
-  const first = parseDateStamp(`${activityMonth}-01`);
-  const offset = (first.getDay() + 6) % 7;
   const grid = document.querySelector('#activity-grid');
-  grid.innerHTML = '<span class="activity-empty" aria-hidden="true"></span>'.repeat(offset) + days.map(value => {
+  grid.style.setProperty('--activity-columns', String(days.length));
+  grid.style.minWidth = `${days.length * 29}px`;
+  grid.innerHTML = days.map(value => {
     const label = `${value.date}：${value.records} 条工作记录，${value.completed} 次任务完成`;
     return `<button class="activity-day${value.date === today ? ' is-today' : ''}" type="button" data-activity-date="${value.date}" data-level="${value.level}" title="${label}" aria-label="${label}" aria-pressed="${value.date === activitySelectedDate}"${value.future ? ' disabled' : ''}>${Number(value.date.slice(-2))}</button>`;
   }).join('');
