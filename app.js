@@ -186,6 +186,7 @@ function normalizeTask(task) {
       date: log.date,
       content: log.content.trim().slice(0, 600),
       kind: FishDeskModel.kind(log),
+      ...(FishDeskModel.validDay(log.completedOn) ? { completedOn: log.completedOn } : {}),
       ...(log.snapshot && typeof log.snapshot === 'object' ? { snapshot: { ...log.snapshot } } : {})
     }))
     : [];
@@ -520,6 +521,13 @@ function resolveTheme(preference) {
 }
 
 function updateThemeControls() {
+  const toggle = document.querySelector('#theme-toggle-button');
+  if (toggle) {
+    const dark = resolveTheme(themePreference) === 'dark';
+    toggle.setAttribute('aria-pressed', String(dark));
+    toggle.setAttribute('aria-label', dark ? '切换为浅色主题' : '切换为深色主题');
+    toggle.title = dark ? '切换为浅色主题' : '切换为深色主题';
+  }
   if (elements.themeCurrentBadge) {
     elements.themeCurrentBadge.textContent = THEME_LABELS[themePreference];
   }
@@ -776,6 +784,7 @@ function formatShortDate(stamp) {
 function taskCardTemplate(task) {
   const title = escapeHTML(task.title);
   const latestLog = getLatestLog(task);
+  const completion = FishDeskModel.completionInfo(task);
   const checkLabel = task.status === 'done' ? `将“${title}”移回待办` : `将“${title}”标为完成`;
   const moveStatus = task.status === 'todo' ? 'doing' : task.status === 'doing' ? 'done' : 'todo';
   const logContent = latestLog
@@ -791,12 +800,13 @@ function taskCardTemplate(task) {
       </div>
       <div class="card-project"><span>${escapeHTML(task.project)}</span><span>${escapeHTML(task.module)}</span></div>
       <h4>${title}</h4>
+      ${task.status === 'done' && completion.date ? `<p class="task-completion-date">完成：${formatShortDate(completion.date)}${completion.source === 'marked' ? '<span>（原标记时间，可编辑）</span>' : ''}</p>` : ''}
       ${logContent}
       ${task.issue ? `<div class="card-issue"><strong>风险</strong><span>${escapeHTML(task.issue)}</span></div>` : ''}
       ${task.nextStep ? `<p class="task-next"><strong>跟进</strong>${escapeHTML(task.nextStep)}</p>` : ''}
       <div class="card-footer">
         <button class="task-tag" type="button" data-action="history" aria-label="查看${title}的${task.workLogs.length}条工作记录">${task.workLogs.length} 条工作记录</button>
-        <span class="task-time">${icons.calendar}${latestLog ? formatShortDate(latestLog.date) : '暂无记录'}</span>
+        <span class="task-time">${icons.calendar}${latestLog ? `工作记录：${formatShortDate(latestLog.date)}` : '暂无记录'}</span>
       </div>
       <div class="card-menu" hidden>
         <button type="button" data-action="log">${icons.log}记录新进展</button>
@@ -842,8 +852,8 @@ function render({ animate = false } = {}) {
     let filtered = visibleTasks.filter(task => task.status === status);
     if (status === 'done') {
       filtered = filtered.sort((a, b) => String(b.completedAt || '').localeCompare(String(a.completedAt || '')));
-      renderCompletedTasks(list, filtered);
-      document.querySelector(`[data-count="${status}"]`).textContent = filtered.length;
+      const displayedCount = renderCompletedTasks(list, filtered);
+      document.querySelector(`[data-count="${status}"]`).textContent = displayedCount;
       return;
     }
     list.innerHTML = filtered.length ? filtered.map(taskCardTemplate).join('') : emptyStateTemplate(status);
@@ -882,6 +892,7 @@ function updateOverview() {
   document.querySelector('#week-log-count').textContent = weekEntries.length;
   document.querySelector('#doing-count').textContent = tasks.filter(task => task.status === 'doing').length;
   document.querySelector('#issue-count').textContent = tasks.filter(task => task.issue && task.status !== 'done').length;
+  renderActivityCalendar();
 }
 
 function openTaskDialog(status = 'todo', task = null, newLog = false) {
@@ -899,6 +910,8 @@ function openTaskDialog(status = 'todo', task = null, newLog = false) {
   elements.nextStep.value = task ? task.nextStep : '';
   elements.issue.value = task ? task.issue : '';
   elements.form.querySelector(`input[name="status"][value="${task ? task.status : status}"]`).checked = true;
+  document.querySelector('#task-completed-on').value = task?.status === 'done' ? FishDeskModel.completionInfo(task).date || dateStamp() : dateStamp();
+  updateTaskCompletionField();
   clearFormErrors();
   clearLogUndo();
   resetLogPolishState();
@@ -911,6 +924,13 @@ function openTaskDialog(status = 'todo', task = null, newLog = false) {
   elements.dialog.showModal();
   document.body.classList.add('modal-open');
   requestAnimationFrame(() => (newLog ? elements.note : elements.project).focus());
+}
+
+function updateTaskCompletionField() {
+  const completed = elements.form.querySelector('input[name="status"]:checked').value === 'done';
+  document.querySelector('#task-completion-field').hidden = !completed;
+  document.querySelector('#task-completed-on').required = completed;
+  if (completed && !document.querySelector('#task-completed-on').value) document.querySelector('#task-completed-on').value = dateStamp();
 }
 
 function clearFormErrors() {
@@ -928,6 +948,7 @@ function handleFormSubmit(event) {
   const content = elements.note.value.trim();
   const workDate = elements.workDate.value;
   const status = elements.form.querySelector('input[name="status"]:checked').value;
+  const completedOn = status === 'done' ? document.querySelector('#task-completed-on').value : '';
 
   if (!project) {
     elements.project.focus();
@@ -943,6 +964,11 @@ function handleFormSubmit(event) {
   if (!workDate) {
     elements.workDate.focus();
     showToast('请选择工作日期');
+    return;
+  }
+  if (status === 'done' && !FishDeskModel.validDay(completedOn)) {
+    showToast('请选择完成／结束日期');
+    document.querySelector('#task-completed-on').focus();
     return;
   }
   const editingId = elements.id.value;
@@ -961,7 +987,7 @@ function handleFormSubmit(event) {
     const task = tasks.find(item => item.id === editingId);
     if (task) {
       const originalLog = task.workLogs.find(log => log.date === originalDate);
-      const currentChanged = task.status !== status || task.nextStep !== elements.nextStep.value.trim() || task.issue !== elements.issue.value.trim();
+      const currentChanged = task.status !== status || task.completedOn !== completedOn || task.nextStep !== elements.nextStep.value.trim() || task.issue !== elements.issue.value.trim();
       Object.assign(task, {
         project,
         module: elements.module.value.trim() || '通用',
@@ -969,12 +995,18 @@ function handleFormSubmit(event) {
         nextStep: elements.nextStep.value.trim(),
         issue: elements.issue.value.trim()
       });
-      setTaskStatus(task, status, originalDate ? dateStamp() : workDate);
+      const previousEnd = task.completedOn;
+      setTaskStatus(task, status, completedOn || dateStamp());
+      task.completedOn = completedOn;
+      if (status === 'done' && previousEnd !== completedOn) {
+        const resultLog = [...task.workLogs].reverse().find(log => log.kind === 'completed' && (!log.completedOn || log.completedOn === previousEnd));
+        if (resultLog) resultLog.completedOn = completedOn;
+      }
       const kind = document.querySelector('#task-log-kind').value;
-      const snapshot = originalLog ? originalLog.snapshot : { status, nextStep: task.nextStep, issue: task.issue };
-      upsertWorkLog(task, workDate, content, originalDate, { kind, ...(snapshot ? { snapshot } : {}) });
-      if (currentChanged || !originalDate) recordTaskSnapshot(task, originalDate ? dateStamp() : workDate);
-      if (status === 'done' && kind === 'completed' && (!task.completedOn || task.completedOn === originalDate)) task.completedOn = workDate;
+      let snapshot = originalLog ? originalLog.snapshot : { status, completedOn, nextStep: task.nextStep, issue: task.issue };
+      if (kind === 'completed' && status === 'done') snapshot = { ...(snapshot || {}), status: 'done', completedOn };
+      upsertWorkLog(task, workDate, content, originalDate, { kind, ...(kind === 'completed' ? { completedOn: completedOn || workDate } : { completedOn: '' }), ...(snapshot ? { snapshot } : {}) });
+      if (currentChanged || !originalDate) recordTaskSnapshot(task, status === 'done' ? completedOn : originalDate ? dateStamp() : workDate);
       task.updatedAt = now;
     }
   } else {
@@ -989,12 +1021,13 @@ function handleFormSubmit(event) {
       createdAt: now,
       updatedAt: now,
       completedAt: status === 'done' ? now : null,
-      completedOn: status === 'done' ? workDate : '',
+      completedOn,
       statusHistory: [],
       workLogs: []
     };
-    upsertWorkLog(task, workDate, content, '', { kind: document.querySelector('#task-log-kind').value, snapshot: { status, nextStep: task.nextStep, issue: task.issue } });
-    recordTaskSnapshot(task, workDate);
+    const kind = document.querySelector('#task-log-kind').value;
+    upsertWorkLog(task, workDate, content, '', { kind, ...(kind === 'completed' ? { completedOn: completedOn || workDate } : {}), snapshot: { status, completedOn, nextStep: task.nextStep, issue: task.issue } });
+    recordTaskSnapshot(task, status === 'done' ? completedOn : workDate);
     tasks.push(task);
   }
 
@@ -1007,6 +1040,7 @@ function handleFormSubmit(event) {
 function requestCompletionResult(task) {
   openTaskDialog(task.status, task, true);
   elements.form.querySelector('input[name="status"][value="done"]').checked = true;
+  updateTaskCompletionField();
   document.querySelector('#task-log-kind').value = 'completed';
   showToast('请先填写实际结果再闭环');
   requestAnimationFrame(() => elements.note.focus());
@@ -1320,9 +1354,13 @@ function reportTaskGroupsHTML(entries) {
     <li class="report-log-group">
       <strong>${escapeHTML(taskLabel(group.task, true))}</strong>
       <div class="report-log-lines">${group.logs.map(log => `
-        <p><time>${formatShortDate(log.date)}</time><span>${escapeHTML(log.content)}</span></p>`).join('')}
+        <p><time>${escapeHTML(formatReportLogDate(log))}</time><span>${escapeHTML(log.content)}</span></p>`).join('')}
       </div>
     </li>`).join('')}</ul>`;
+}
+
+function formatReportLogDate(log) {
+  return log.workDate && log.workDate !== log.date ? `${log.date} 完成（工作记录 ${log.workDate}）` : log.date;
 }
 
 
@@ -1388,7 +1426,7 @@ function buildReportMarkdown(data = getReportData()) {
       if (!entries.length) lines.push('本期无此类记录。');
       groupEntriesByTask(entries).forEach(group => {
         lines.push(`- ${markdownText(taskLabel(group.task, true))}`);
-        group.logs.forEach(log => lines.push(`  - ${log.date}：${markdownText(log.content)}`));
+        group.logs.forEach(log => lines.push(`  - ${formatReportLogDate(log)}：${markdownText(log.content)}`));
       });
       lines.push('');
     });
@@ -1988,6 +2026,7 @@ function applySettingsToForm(data) {
   if (data && THEME_LABELS[data.theme]) applyTheme(data.theme);
   elements.settingsAiBaseUrl.value = ai.baseUrl || '';
   elements.settingsAiModel.value = ai.model || '';
+  document.querySelector('#settings-ai-style').value = ai.polishStyle || '';
   elements.settingsSessionDays.value = data && Number.isInteger(data.sessionDays) ? data.sessionDays : '';
   const configured = Boolean(ai.keyConfigured);
   elements.aiConfigBadge.textContent = ai.enabled ? '已启用' : '未配置';
@@ -2035,7 +2074,7 @@ async function handleSettingsSubmit(event) {
   const baseUrl = elements.settingsAiBaseUrl.value.trim();
   const model = elements.settingsAiModel.value.trim();
   const days = elements.settingsSessionDays.value.trim();
-  const body = { aiBaseUrl: baseUrl, aiModel: model };
+  const body = { aiBaseUrl: baseUrl, aiModel: model, aiPolishStyle: document.querySelector('#settings-ai-style').value.trim() };
   if (key) body.aiKey = key;
   if (days) body.sessionDays = Number(days);
   elements.settingsSaveButton.disabled = true;
@@ -2222,6 +2261,12 @@ elements.passwordSubmit.addEventListener('click', handlePasswordSubmit);
 document.querySelectorAll('[data-theme-choice]').forEach(button => {
   button.addEventListener('click', () => selectTheme(button.dataset.themeChoice));
 });
+document.querySelector('#theme-toggle-button').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  try { await selectTheme(resolveTheme(themePreference) === 'dark' ? 'light' : 'dark'); }
+  finally { button.disabled = false; }
+});
 elements.aiTestButton.addEventListener('click', handleAITest);
 elements.aiClearKeyButton.addEventListener('click', clearAIKey);
 elements.reportAISetupButton.addEventListener('click', () => {
@@ -2246,6 +2291,7 @@ elements.logPolishClose.addEventListener('click', closeLogPolishPanel);
 elements.logPolishUndoButton.addEventListener('click', undoLogPolish);
 elements.form.addEventListener('submit', handleFormSubmit);
 elements.form.querySelectorAll('input[name="status"]').forEach(input => input.addEventListener('change', () => {
+  updateTaskCompletionField();
   if (!elements.originalLogDate.value) document.querySelector('#task-log-kind').value = input.value === 'done' ? 'completed' : 'progress';
 }));
 elements.title.addEventListener('input', clearFormErrors);

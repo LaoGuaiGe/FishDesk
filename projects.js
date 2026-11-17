@@ -2,6 +2,39 @@
 
 let projectView = 'active';
 let projectTab = 'timeline';
+let activityMonth = '';
+let activitySelectedDate = '';
+
+function renderActivityCalendar() {
+  const today = dateStamp();
+  if (!activityMonth) activityMonth = today.slice(0, 7);
+  const days = FishDeskModel.monthActivity(tasks, activityMonth, today);
+  const monthInput = document.querySelector('#activity-month');
+  monthInput.value = activityMonth;
+  monthInput.max = today.slice(0, 7);
+  document.querySelector('#activity-next').disabled = activityMonth >= today.slice(0, 7);
+  const first = parseDateStamp(`${activityMonth}-01`);
+  const offset = (first.getDay() + 6) % 7;
+  const grid = document.querySelector('#activity-grid');
+  grid.innerHTML = '<span class="activity-empty" aria-hidden="true"></span>'.repeat(offset) + days.map(value => {
+    const label = `${value.date}：${value.records} 条工作记录，${value.completed} 次任务完成`;
+    return `<button class="activity-day${value.date === today ? ' is-today' : ''}" type="button" data-activity-date="${value.date}" data-level="${value.level}" title="${label}" aria-label="${label}" aria-pressed="${value.date === activitySelectedDate}"${value.future ? ' disabled' : ''}>${Number(value.date.slice(-2))}</button>`;
+  }).join('');
+  const chosen = days.find(value => value.date === activitySelectedDate);
+  document.querySelector('#activity-detail').textContent = chosen
+    ? `${chosen.date} · ${chosen.records} 条工作记录 · ${chosen.completed} 次任务完成`
+    : `本月 ${days.reduce((sum, value) => sum + value.records, 0)} 条工作记录 · ${days.reduce((sum, value) => sum + value.completed, 0)} 次任务完成`;
+}
+
+function shiftActivityMonth(step) {
+  const date = parseDateStamp(`${activityMonth || dateStamp().slice(0, 7)}-01`);
+  date.setMonth(date.getMonth() + step);
+  const month = dateStamp(date).slice(0, 7);
+  if (month > dateStamp().slice(0, 7)) return;
+  activityMonth = month;
+  activitySelectedDate = '';
+  renderActivityCalendar();
+}
 
 function returnToProjectHome(event) {
   if (event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -118,9 +151,23 @@ function renderCompletedTasks(list, completed) {
   const filtered = completed.filter(task => !search || [task.title, ...task.workLogs.map(log => log.content)].join(' ').toLowerCase().includes(search));
   const groups = FishDeskModel.completedGroups(filtered, dateStamp(), range?.startStamp, range?.endStamp);
   list.innerHTML = groups.length ? groups.map(group => `<details class="completed-day"${group.today ? ' open' : ''}><summary>${group.today ? '今天完成' : escapeHTML(group.date)} <span>${group.tasks.length} 项</span></summary>${group.tasks.map(taskCardTemplate).join('')}</details>`).join('') : '<p class="records-empty">该范围没有已完成的任务。</p>';
+  return groups.reduce((count, group) => count + group.tasks.length, 0);
 }
 
 document.querySelector('.brand').addEventListener('click', returnToProjectHome);
+document.querySelector('#activity-prev').addEventListener('click', () => shiftActivityMonth(-1));
+document.querySelector('#activity-next').addEventListener('click', () => shiftActivityMonth(1));
+document.querySelector('#activity-month').addEventListener('change', event => {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value) || event.target.value > dateStamp().slice(0, 7)) return;
+  activityMonth = event.target.value; activitySelectedDate = ''; renderActivityCalendar();
+});
+document.querySelector('#activity-grid').addEventListener('click', event => {
+  const button = event.target.closest('[data-activity-date]');
+  if (!button) return;
+  activitySelectedDate = button.dataset.activityDate;
+  renderActivityCalendar();
+  document.querySelector(`[data-activity-date="${activitySelectedDate}"]`).focus({ preventScroll: true });
+});
 document.querySelector('#new-project-button').addEventListener('click', () => openProjectDialog());
 document.querySelector('#project-grid').addEventListener('click', event => {
   const button = event.target.closest('[data-project-open]');

@@ -7,7 +7,7 @@ ENV NODE_ENV=production \
     DATA_DIR=/data
 
 COPY package.json server.js model.js ./
-COPY index.html styles.css projects.css app.js projects.js login.html ./
+COPY index.html styles.css projects.css dashboard.css app.js projects.js login.html ./
 COPY assets ./assets
 
 RUN mkdir -p /data

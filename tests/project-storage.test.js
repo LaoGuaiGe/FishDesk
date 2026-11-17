@@ -40,7 +40,7 @@ test('无任务的独立项目可保存，冲突时携带项目资料用于合�
 test('旧标签页保存任务时不抹掉新的记录分类和历史快照', async t => {
   const original = { id: 'task', title: '调试', project: '机器人', status: 'done', completedOn: '2026-11-16',
     statusHistory: [{ date: '2026-11-16', status: 'done', nextStep: '', issue: '' }],
-    workLogs: [{ id: 'log', date: '2026-11-16', content: '已完成', kind: 'completed', snapshot: { status: 'done', nextStep: '', issue: '' } }] };
+    workLogs: [{ id: 'log', date: '2026-11-16', content: '已完成', kind: 'completed', completedOn: '2026-11-16', snapshot: { status: 'done', nextStep: '', issue: '' } }] };
   const server = await startServer(t, { files: { 'daylight.json': JSON.stringify({ rev: 1, tasks: [original] }) } });
   const cookie = await server.cookie();
   const legacyTask = { id: 'task', title: '调试', project: '机器人', status: 'done', workLogs: [{ id: 'log', date: '2026-11-16', content: '已完成，补充说明' }] };
@@ -48,6 +48,7 @@ test('旧标签页保存任务时不抹掉新的记录分类和历史快照', as
   assert.equal(response.status, 200);
   const result = await (await server.request('/api/tasks', { headers: { Cookie: cookie } })).json();
   assert.equal(result.tasks[0].workLogs[0].kind, 'completed');
+  assert.equal(result.tasks[0].workLogs[0].completedOn, '2026-11-16');
   assert.equal(result.tasks[0].workLogs[0].content, '已完成，补充说明');
   assert.deepEqual(result.tasks[0].statusHistory, original.statusHistory);
   assert.deepEqual(result.tasks[0].workLogs[0].snapshot, original.workLogs[0].snapshot);

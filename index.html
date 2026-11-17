@@ -20,6 +20,7 @@
   <link rel="apple-touch-icon" href="/assets/brand/favicon-256.png">
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="projects.css">
+  <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到项目看板</a>
@@ -34,23 +35,16 @@
       </a>
       <div class="topbar__actions">
         <div class="date-block" aria-label="今天日期"><strong id="current-date"></strong><span id="current-weekday"></span></div>
-        <button class="button button--report" id="records-button" type="button" aria-label="归档与记录">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v3H4zM5 10v10h14V10M10 14h4"/></svg>
-          <span>归档与记录</span>
-        </button>
         <button class="button button--report" id="settings-button" type="button" aria-label="打开设置">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
           <span>设置</span>
         </button>
-        <button class="button button--report" id="report-button" type="button" aria-label="生成工作报告">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg>
-          <span>工作报告</span>
-        </button>
-        <button class="button button--primary" id="new-project-button" type="button">新建项目</button>
         <button class="button button--secondary" id="new-task-button" type="button">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           新建工作项
         </button>
+        <button class="button button--primary" id="new-project-button" type="button">新建项目</button>
+        <button class="theme-toggle" id="theme-toggle-button" type="button" aria-label="切换为深色主题" aria-pressed="false" title="切换为深色主题"><svg class="theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.2A8.8 8.8 0 0 1 8.8 4 8.8 8.8 0 1 0 20 15.2Z"/></svg><svg class="theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg></button>
       </div>
     </header>
 
@@ -58,26 +52,15 @@
       <section class="overview reveal" aria-labelledby="greeting">
         <div class="overview__copy">
           <p class="eyebrow"><span class="status-dot"></span> ENGINEERING LOG</p>
-          <h1 id="greeting">早上好，<br><span>把问题逐项闭环。</span></h1>
+          <div class="overview__intro"><h1 id="greeting">下午好，<br><span>把问题逐项闭环。</span></h1><button class="button button--primary overview-report" id="report-button" type="button" aria-label="生成工作报告">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Z"/><path d="M14 3v5h5M9 12h6M9 16h6"/></svg>
+          <span>工作报告</span>
+        </button></div>
           <p class="overview__caption">记录真实进展、验证结果和需要继续跟进的问题。</p>
-          <div class="mini-metrics" aria-label="工作项概览">
-            <div><strong id="total-count">0</strong><span>推进中项目</span></div>
-            <span class="mini-metrics__divider" aria-hidden="true"></span>
-            <div><strong id="remaining-count">0</strong><span>待闭环</span></div>
-          </div>
+          <div class="overview-metrics" aria-label="工作概览"><div><strong id="total-count">0</strong><span>推进中项目</span></div><div><strong id="remaining-count">0</strong><span>待闭环工作项</span></div><div><strong id="today-log-count">0</strong><span>今日工作记录</span></div><div><strong id="week-log-count">0</strong><span>本周工作记录</span></div></div>
+          <p class="overview-context"><strong id="today-project-count">0</strong> 个项目有今日进展 · <strong id="doing-count">0</strong> 项进行中 · <strong id="issue-count">0</strong> 项风险待处理</p>
         </div>
-        <div class="progress-summary">
-          <div class="progress-summary__number engineering-number" aria-hidden="true">
-            <span id="today-log-count">0</span><span class="engineering-unit">项</span>
-          </div>
-          <p><strong id="today-project-count">0</strong> 个项目有今日进展</p>
-        </div>
-        <div class="engineering-strip">
-          <div><span>本周工作记录</span><strong id="week-log-count">0</strong></div>
-          <div><span>正在进行</span><strong id="doing-count">0</strong></div>
-          <div><span>风险待闭环</span><strong id="issue-count">0</strong></div>
-          <p>报告只整理已录入的工作记录，不自动补写成果。</p>
-        </div>
+        <section class="activity-calendar" aria-label="月度工作热力图"><div class="activity-calendar__head"><h2>月度活动</h2><div class="activity-month-control"><button class="icon-button" id="activity-prev" type="button" aria-label="上个月">‹</button><input id="activity-month" type="month" aria-label="热力图月份"><button class="icon-button" id="activity-next" type="button" aria-label="下个月">›</button></div></div><div class="activity-weekdays" aria-hidden="true"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div><div class="activity-grid" id="activity-grid" role="group" aria-label="每日工作活动"></div><div class="activity-legend"><span>少</span><i data-level="0"></i><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i><span>多</span><span>工作记录＋任务完成</span></div><p id="activity-detail" class="activity-detail" role="status" aria-live="polite"></p></section>
       </section>
 
       <section class="workspace reveal reveal--delayed" aria-labelledby="workspace-title">
@@ -121,7 +104,7 @@
       </section>
     </main>
 
-    <footer class="footer"><span>FACTS, NOT FILLER.</span><span class="footer__status"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="footer__sync" id="sync-status" role="status" aria-live="polite">正在连接服务器…</span><button class="footer__logout" id="logout-button" type="button">退出登录</button></span></footer>
+    <footer class="footer"><span>FACTS, NOT FILLER.</span><span class="footer__status"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span class="footer__sync" id="sync-status" role="status" aria-live="polite">正在连接服务器…</span><button class="footer__logout" id="records-button" type="button">归档与记录</button><button class="footer__logout" id="logout-button" type="button">退出登录</button></span></footer>
   </div>
 
   <dialog class="task-dialog" id="project-dialog" aria-labelledby="project-dialog-title"><form id="project-form">
@@ -164,7 +147,9 @@
         </div>
       </section>
       <div class="form-row">
-        <div class="form-field"><label for="task-work-date">工作日期</label><input id="task-work-date" type="date" required></div>
+        <div class="form-field"><label for="task-work-date">工作记录日期</label><input id="task-work-date" type="date" required></div>
+        <div class="form-field" id="task-completion-field" hidden><label for="task-completed-on">完成／结束日期</label><input id="task-completed-on" type="date"><p class="field-hint">用于“今日完成”筛选，与工作记录日期分别保存。</p></div>
+      </div><div class="form-row">
         <div class="form-field"><label for="task-next">后续跟进 <span>可选</span></label><input id="task-next" type="text" maxlength="240" placeholder="下一步做什么？" autocomplete="off"></div>
       </div>
       <div class="form-field"><label for="task-issue">问题 / 风险 <span>可选</span></label><textarea id="task-issue" rows="2" maxlength="360" placeholder="当前阻塞、影响和需要的支持。"></textarea></div>
@@ -301,23 +286,12 @@
             <div class="form-field"><label for="settings-ai-base-url">接口地址</label><input id="settings-ai-base-url" type="text" maxlength="300" placeholder="https://api.deepseek.com" autocomplete="off" spellcheck="false"></div>
             <div class="form-field"><label for="settings-ai-model">模型</label><input id="settings-ai-model" type="text" maxlength="100" placeholder="deepseek-chat" autocomplete="off" spellcheck="false"></div>
           </div>
+          <div class="form-field"><label for="settings-ai-style">AI 润色风格 <span>你想让 AI 润色成什么样式？</span></label><textarea id="settings-ai-style" rows="4" maxlength="2000" placeholder="例如：简洁直接，适合给领导看的日报；保留型号、数字和验证结果，不写空话。"></textarea><p class="field-hint">可描述语气、格式和详略，保存后用于工作记录与报告润色。仍会保留事实、数字和项目名；留空使用默认风格。</p></div>
           <div class="settings-test">
             <button class="button button--secondary" id="ai-test-button" type="button">测试连接</button>
             <span class="settings-test__result" id="ai-test-result" role="status" aria-live="polite"></span>
           </div>
           <button class="settings-link" id="ai-clear-key-button" type="button">清除已保存的 API Key</button>
-        </section>
-        <section class="settings-section">
-          <div class="settings-section__head">
-            <h3>外观</h3>
-            <span class="settings-badge" id="theme-current-badge">跟随系统</span>
-          </div>
-          <p class="records-hint">选择会立即生效，并同步保存到服务器；刷新页面或换设备登录后保持不变。</p>
-          <div class="theme-options" role="radiogroup" aria-label="界面主题">
-            <button type="button" role="radio" aria-checked="false" data-theme-choice="light"><span aria-hidden="true">☀</span>浅色</button>
-            <button type="button" role="radio" aria-checked="false" data-theme-choice="dark"><span aria-hidden="true">☾</span>深色</button>
-            <button type="button" role="radio" aria-checked="true" data-theme-choice="system"><span aria-hidden="true">⌂</span>跟随系统</button>
-          </div>
         </section>
         <section class="settings-section settings-password">
           <div class="settings-section__head"><h3>访问密码</h3></div>

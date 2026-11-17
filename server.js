@@ -61,7 +61,8 @@ const STATIC_FILES = new Map([
   ['/app.js', 'app.js'],
   ['/model.js', 'model.js'],
   ['/projects.js', 'projects.js'],
-  ['/projects.css', 'projects.css']
+  ['/projects.css', 'projects.css'],
+  ['/dashboard.css', 'dashboard.css']
 ]);
 const PUBLIC_ASSETS = new Map([
   ['/assets/brand/fishdesk-logo-horizontal.svg', 'assets/brand/fishdesk-logo-horizontal.svg'],
@@ -136,6 +137,7 @@ function loadRuntimeConfig() {
     if (typeof parsed.aiApiKey === 'string') result.aiApiKey = parsed.aiApiKey.trim();
     if (typeof parsed.aiBaseUrl === 'string' && parsed.aiBaseUrl.trim()) result.aiBaseUrl = parsed.aiBaseUrl.trim();
     if (typeof parsed.aiModel === 'string' && parsed.aiModel.trim()) result.aiModel = parsed.aiModel.trim();
+    if (typeof parsed.aiPolishStyle === 'string') result.aiPolishStyle = parsed.aiPolishStyle.slice(0, 2000);
     if (Number.isInteger(parsed.sessionDays)) result.sessionDays = Math.min(365, Math.max(1, parsed.sessionDays));
     if (THEMES.has(parsed.theme)) result.theme = parsed.theme;
     return result;
@@ -181,7 +183,8 @@ function publicSettings() {
       keyConfigured: Boolean(ai.apiKey),
       keyMasked: maskApiKey(ai.apiKey),
       baseUrl: ai.baseUrl,
-      model: ai.model
+      model: ai.model,
+      polishStyle: runtimeConfig.aiPolishStyle || ''
     },
     sessionDays: getSessionDays(),
     theme: runtimeConfig.theme || 'system'
@@ -460,6 +463,7 @@ function preserveHistoryForOlderClients(incoming, previous) {
       const previousLog = old.workLogs.find(value => value.id === log.id || value.date === log.date);
       if (!previousLog) return log;
       return { ...log, ...(log.kind === undefined && previousLog.kind !== undefined ? { kind: previousLog.kind } : {}),
+        ...(log.completedOn === undefined && previousLog.completedOn !== undefined ? { completedOn: previousLog.completedOn } : {}),
         ...(log.snapshot === undefined && previousLog.snapshot ? { snapshot: previousLog.snapshot } : {}) };
     });
     return result;
@@ -476,8 +480,10 @@ function validateTasks(value) {
     if (typeof item.title !== 'string' || !item.title) return null;
     if (!STATUSES.has(item.status)) return null;
     if (!Array.isArray(item.workLogs)) return null;
+    if (item.completedOn !== undefined && item.completedOn !== '' && !Model.validDay(item.completedOn)) return null;
     if (item.workLogs.some(log => !log || typeof log.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(log.date)
-      || typeof log.content !== 'string' || (log.kind !== undefined && !['progress', 'completed', 'unknown'].includes(log.kind)))) return null;
+      || typeof log.content !== 'string' || (log.kind !== undefined && !['progress', 'completed', 'unknown'].includes(log.kind))
+      || (log.completedOn !== undefined && log.completedOn !== '' && !Model.validDay(log.completedOn)))) return null;
     if (item.statusHistory !== undefined && (!Array.isArray(item.statusHistory) || item.statusHistory.some(snapshot =>
       !snapshot || typeof snapshot.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(snapshot.date) || !STATUSES.has(snapshot.status)))) return null;
     seen.add(item.id);
@@ -911,6 +917,7 @@ async function handlePolish(req, res) {
         stream: false,
         messages: [
           { role: 'system', content: AI_SYSTEM_PROMPT },
+          ...(runtimeConfig.aiPolishStyle ? [{ role: 'user', content: `我期望的润色风格：\n${runtimeConfig.aiPolishStyle}\n仅调整表达方式，仍需遵守保留事实、数字及原有条目等系统要求。` }] : []),
           {
             role: 'user',
             content: kind === 'log'
@@ -979,6 +986,13 @@ async function handleUpdateSettings(req, res) {
 
   const previous = runtimeConfig;
   const next = { ...runtimeConfig };
+  if (Object.prototype.hasOwnProperty.call(body, 'aiPolishStyle')) {
+    if (typeof body.aiPolishStyle !== 'string' || body.aiPolishStyle.length > 2000) {
+      sendJSON(res, 400, { error: '润色风格需要是文字，最多 2000 字' });
+      return;
+    }
+    next.aiPolishStyle = body.aiPolishStyle.trim();
+  }
 
   if (typeof body.aiKey === 'string' && body.aiKey.trim()) {
     const key = body.aiKey.trim();
