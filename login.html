@@ -242,6 +242,8 @@
     const params = new URLSearchParams(location.search);
     const nextParam = params.get('next') || '/';
     const next = nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
+    let blockedUntil = 0;
+    let countdownTimer = null;
 
     function showError(message) {
       errorBox.textContent = message;
@@ -254,13 +256,36 @@
       button.textContent = '进入工作台';
     }
 
+    function updateCountdown() {
+      clearTimeout(countdownTimer);
+      const seconds = Math.max(0, Math.ceil((blockedUntil - Date.now()) / 1000));
+      if (!seconds) {
+        blockedUntil = 0;
+        resetButton();
+        showError('等待已结束，可以重新输入密码登录');
+        return;
+      }
+      button.disabled = true;
+      button.textContent = `请等待 ${seconds} 秒`;
+      showError(`密码错误次数过多，请 ${seconds} 秒后再试`);
+      countdownTimer = setTimeout(updateCountdown, 1000);
+    }
+
     input.addEventListener('input', () => {
+      if (blockedUntil > Date.now()) {
+        updateCountdown();
+        return;
+      }
       input.classList.remove('is-invalid');
       errorBox.hidden = true;
     });
 
     form.addEventListener('submit', async event => {
       event.preventDefault();
+      if (blockedUntil > Date.now()) {
+        updateCountdown();
+        return;
+      }
       const password = input.value;
       if (!password) {
         showError('请输入访问密码');
@@ -278,6 +303,12 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
+          if (response.status === 429) {
+            const retryAfter = Number(data.retryAfter || response.headers.get('Retry-After'));
+            blockedUntil = Date.now() + (Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 600) * 1000;
+            updateCountdown();
+            return;
+          }
           showError(data.error || '登录失败，请重试');
           resetButton();
           input.select();
