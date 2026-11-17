@@ -301,6 +301,14 @@ function recordFailure(ip) {
   record.failures += 1;
 }
 
+function rejectLimitedLogin(ip, res) {
+  if (!isRateLimited(ip)) return false;
+  const retryAfter = Math.max(1, Math.ceil((loginAttempts.get(ip).firstAt + LOGIN_WINDOW_MS - Date.now()) / 1000));
+  res.setHeader('Retry-After', String(retryAfter));
+  sendJSON(res, 429, { error: '密码错误次数过多，请等待后再试', retryAfter });
+  return true;
+}
+
 let store = null;
 let storePromise = null;
 let writeChain = Promise.resolve();
@@ -628,10 +636,7 @@ async function handleLogin(req, res) {
     return;
   }
   const ip = req.socket.remoteAddress || 'unknown';
-  if (isRateLimited(ip)) {
-    sendJSON(res, 429, { error: '尝试次数过多，请十分钟后再试' });
-    return;
-  }
+  if (rejectLimitedLogin(ip, res)) return;
   let body;
   try {
     body = await readJSON(req);
@@ -639,6 +644,8 @@ async function handleLogin(req, res) {
     sendJSON(res, error.status || 400, { error: '登录请求格式错误' });
     return;
   }
+  // Body reads yield to other requests; check again before running password verification.
+  if (rejectLimitedLogin(ip, res)) return;
   if (!checkPassword(body && body.password)) {
     recordFailure(ip);
     sendJSON(res, 401, { error: '密码不正确' });
