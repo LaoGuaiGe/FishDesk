@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { isIP } = require('node:net');
 
 const PORT = Number(process.env.PORT || 8080);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -13,6 +14,7 @@ const DATA_FILE = path.join(DATA_DIR, 'daylight.json');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const SECRET_FILE = path.join(DATA_DIR, 'session.secret');
+const LOGIN_ATTEMPTS_FILE = path.join(DATA_DIR, 'login-attempts.json');
 const PASSWORD = process.env.PASSWORD || '';
 const ENV_SESSION_DAYS = Math.min(365, Math.max(1, Number(process.env.SESSION_DAYS) || 30));
 const COOKIE_NAME = 'daylight_session';
@@ -280,7 +282,41 @@ function checkPassword(input) {
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-const loginAttempts = new Map();
+let loginAttemptsError = false;
+const loginAttempts = loadLoginAttempts();
+
+function loadLoginAttempts() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(LOGIN_ATTEMPTS_FILE, 'utf8'));
+    if (parsed.version !== 1 || !Array.isArray(parsed.attempts) || parsed.attempts.length > 10000) throw new Error('登录限制记录格式错误');
+    const result = new Map();
+    for (const entry of parsed.attempts) {
+      if (!Array.isArray(entry) || entry.length !== 2) throw new Error('登录限制记录格式错误');
+      const [ip, record] = entry;
+      if (!isIP(ip) || !record || !Number.isFinite(record.firstAt) || !Number.isInteger(record.failures) || record.failures < 1) throw new Error('登录限制记录格式错误');
+      if (Date.now() - record.firstAt <= LOGIN_WINDOW_MS) result.set(ip, record);
+    }
+    return result;
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      loginAttemptsError = true;
+      console.error('[fishdesk] 登录限制记录读取失败，已暂停新登录：', error.message);
+    }
+    return new Map();
+  }
+}
+
+function persistLoginAttempts() {
+  const temporary = `${LOGIN_ATTEMPTS_FILE}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(temporary, JSON.stringify({ version: 1, attempts: [...loginAttempts] }), { mode: 0o600 });
+    fs.renameSync(temporary, LOGIN_ATTEMPTS_FILE);
+  } catch (error) {
+    loginAttemptsError = true;
+    console.error('[fishdesk] 登录限制记录保存失败，已暂停新登录：', error.message);
+    throw httpError(503, '登录保护暂不可用，请管理员检查服务器存储后重启服务');
+  }
+}
 
 function isRateLimited(ip) {
   const record = loginAttempts.get(ip);
@@ -293,15 +329,22 @@ function isRateLimited(ip) {
 }
 
 function recordFailure(ip) {
+  for (const [address, record] of loginAttempts) {
+    if (Date.now() - record.firstAt > LOGIN_WINDOW_MS) loginAttempts.delete(address);
+  }
   const record = loginAttempts.get(ip);
   if (!record || Date.now() - record.firstAt > LOGIN_WINDOW_MS) {
+    if (loginAttempts.size >= 10000) throw httpError(503, '登录请求过多，请稍后再试');
     loginAttempts.set(ip, { failures: 1, firstAt: Date.now() });
+    persistLoginAttempts();
     return;
   }
   record.failures += 1;
+  persistLoginAttempts();
 }
 
 function rejectLimitedLogin(ip, res) {
+  if (loginAttemptsError) throw httpError(503, '登录保护暂不可用，请管理员检查服务器存储后重启服务');
   if (!isRateLimited(ip)) return false;
   const retryAfter = Math.max(1, Math.ceil((loginAttempts.get(ip).firstAt + LOGIN_WINDOW_MS - Date.now()) / 1000));
   res.setHeader('Retry-After', String(retryAfter));
@@ -651,7 +694,7 @@ async function handleLogin(req, res) {
     sendJSON(res, 401, { error: '密码不正确' });
     return;
   }
-  loginAttempts.delete(ip);
+  if (loginAttempts.delete(ip)) persistLoginAttempts();
   res.setHeader('Set-Cookie', sessionCookie(signSession(), getSessionDays() * 86400, isSecureRequest(req)));
   sendJSON(res, 200, { ok: true, expiresInDays: getSessionDays() });
 }
