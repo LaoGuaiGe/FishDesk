@@ -16,6 +16,17 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run regression tests
+        run: npm test
+
+      - name: Test updater recovery
+        run: bash deploy/tests/test-updater.sh
+
       - name: Validate tag and package version
         id: version
         shell: bash
