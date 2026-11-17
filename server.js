@@ -63,10 +63,21 @@ const STATIC_FILES = new Map([
   ['/projects.js', 'projects.js'],
   ['/projects.css', 'projects.css']
 ]);
+const PUBLIC_ASSETS = new Map([
+  ['/assets/brand/fishdesk-logo-horizontal.svg', 'assets/brand/fishdesk-logo-horizontal.svg'],
+  ['/assets/brand/fishdesk-logo-horizontal-dark.svg', 'assets/brand/fishdesk-logo-horizontal-dark.svg'],
+  ['/assets/brand/fishdesk-app-icon.svg', 'assets/brand/fishdesk-app-icon.svg'],
+  ['/assets/brand/favicon-32.png', 'assets/brand/favicon-32.png'],
+  ['/assets/brand/favicon-256.png', 'assets/brand/favicon-256.png'],
+  ['/favicon.ico', 'assets/brand/favicon.ico']
+]);
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8'
+  '.js': 'text/javascript; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon'
 };
 
 let auth = null;
@@ -1153,6 +1164,10 @@ const server = http.createServer(async (req, res) => {
   }
   const pathname = url.pathname;
   try {
+    if (PUBLIC_ASSETS.has(pathname) && (req.method === 'GET' || req.method === 'HEAD')) {
+      await serveFile(res, PUBLIC_ASSETS.get(pathname), req);
+      return;
+    }
     if (pathname === '/healthz') {
       await getStore();
       await fsp.access(DATA_DIR, fs.constants.R_OK | fs.constants.W_OK);

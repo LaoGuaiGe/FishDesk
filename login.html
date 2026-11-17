@@ -19,6 +19,9 @@
   </script>
   <meta name="robots" content="noindex, nofollow">
   <title>登录 — FishDesk 嵌入式研发工作台</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/brand/fishdesk-app-icon.svg">
+  <link rel="alternate icon" href="/favicon.ico?v=1.1.2">
+  <link rel="apple-touch-icon" href="/assets/brand/favicon-256.png">
   <style>
     :root {
       --ink: #171a17;
@@ -103,7 +106,10 @@
       font-weight: 700;
       letter-spacing: -0.055em;
     }
-    h1 span { color: #a6bd38; }
+    .brand-logo { display: block; width: 300px; height: auto; max-width: 100%; }
+    .brand-logo--dark { display: none; }
+    html[data-theme="dark"] .brand-logo--light { display: none; }
+    html[data-theme="dark"] .brand-logo--dark { display: block; }
     .desc {
       margin: 0 0 30px;
       color: var(--muted);
@@ -249,7 +255,7 @@
   <div class="ambient" aria-hidden="true"></div>
   <main class="card">
     <p class="eyebrow"><span></span>PRIVATE WORKSPACE</p>
-    <h1>FishDesk<span>.</span></h1>
+    <h1 aria-label="FishDesk"><img class="brand-logo brand-logo--light" src="/assets/brand/fishdesk-logo-horizontal.svg" width="1700" height="350" alt=""><img class="brand-logo brand-logo--dark" src="/assets/brand/fishdesk-logo-horizontal-dark.svg" width="1700" height="350" alt=""></h1>
     <p class="desc">这是你的私人工作台。输入访问密码后，当前设备在有效期内保持登录，不必重复输入。</p>
     <form id="login-form" novalidate>
       <label for="password">访问密码</label>

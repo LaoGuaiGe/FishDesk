@@ -152,6 +152,11 @@ svg {
   text-decoration: none;
 }
 
+.brand-logo { display: block; width: 200px; height: auto; }
+.brand-logo--dark { display: none; }
+html[data-theme="dark"] .brand-logo--light { display: none; }
+html[data-theme="dark"] .brand-logo--dark { display: block; }
+
 .brand__mark {
   display: grid;
   grid-template-columns: repeat(2, 7px);

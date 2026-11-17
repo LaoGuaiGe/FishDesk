@@ -8,6 +8,7 @@ ENV NODE_ENV=production \
 
 COPY package.json server.js model.js ./
 COPY index.html styles.css projects.css app.js projects.js login.html ./
+COPY assets ./assets
 
 RUN mkdir -p /data
 
