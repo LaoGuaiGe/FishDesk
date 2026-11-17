@@ -3,6 +3,17 @@
 let projectView = 'active';
 let projectTab = 'timeline';
 
+function returnToProjectHome(event) {
+  if (event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  selectedProject = 'all';
+  projectView = 'active';
+  projectTab = 'timeline';
+  document.querySelector('#project-search').value = '';
+  render();
+  window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+}
+
 function selectedProjectData() { return projects.find(project => project.name === selectedProject); }
 function projectTasks(name) { return tasks.filter(task => task.project === name); }
 
@@ -109,6 +120,7 @@ function renderCompletedTasks(list, completed) {
   list.innerHTML = groups.length ? groups.map(group => `<details class="completed-day"${group.today ? ' open' : ''}><summary>${group.today ? '今天完成' : escapeHTML(group.date)} <span>${group.tasks.length} 项</span></summary>${group.tasks.map(taskCardTemplate).join('')}</details>`).join('') : '<p class="records-empty">该范围没有已完成的任务。</p>';
 }
 
+document.querySelector('.brand').addEventListener('click', returnToProjectHome);
 document.querySelector('#new-project-button').addEventListener('click', () => openProjectDialog());
 document.querySelector('#project-grid').addEventListener('click', event => {
   const button = event.target.closest('[data-project-open]');
